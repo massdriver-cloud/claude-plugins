@@ -1,0 +1,12 @@
+{
+  "name": "massdriver",
+  "description": "Develop infrastructure bundles for Massdriver's self-service cloud platform with guardrails",
+  "version": "1.0.0",
+  "author": {
+    "name": "Massdriver",
+    "url": "https://massdriver.cloud"
+  },
+  "repository": "https://github.com/massdriver-cloud/massdriver-skill",
+  "license": "Apache-2.0",
+  "keywords": ["infrastructure", "iac", "terraform", "opentofu", "bundles", "devops", "platform-engineering"]
+}

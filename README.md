@@ -1,6 +1,6 @@
-# Massdriver Skill for Claude Code
+# Massdriver Skills for Claude Code
 
-A Claude Code skill for developing [Massdriver](https://massdriver.cloud) infrastructure bundles, artifact definitions, and platform integrations.
+Build infrastructure bundles for [Massdriver](https://massdriver.cloud), the internal developer platform that turns infrastructure-as-code into reusable, self-service components with built-in guardrails.
 
 ## Installation
 
@@ -10,10 +10,13 @@ A Claude Code skill for developing [Massdriver](https://massdriver.cloud) infras
 
 ## What This Skill Does
 
+This skill helps platform engineers create Massdriver bundles—reusable IaC modules that package Terraform, OpenTofu, or Helm with input schemas, artifact contracts, and operational policies. Bundles enable developer self-service while encoding your organization's security, compliance, and best practices.
+
+**Capabilities:**
 - Guides bundle development with proper lifecycle scoping
 - Enforces critical rules (namespace collisions, artifact matching, generated files)
 - Provides patterns for connections, artifacts, alarms, and Checkov compliance
-- Includes copy-paste snippets for common files
+- Includes copy-paste snippets for common bundle files
 
 ## When It Activates
 
@@ -22,25 +25,38 @@ The skill auto-activates when:
 - Editing `massdriver.yaml` files
 - Asking about bundles, artifacts, connections, or Massdriver patterns
 
-## Skill Contents
+## Plugin Contents
 
 ```
 massdriver-skill/
-├── SKILL.md              # Core instructions
-├── PATTERNS.md           # Complete bundle and artifact examples
-├── references/
-│   ├── alarms.md         # AWS/GCP/Azure monitoring setup
-│   └── compliance.md     # Checkov remediation workflow
-└── snippets/
-    ├── massdriver-yaml.yaml    # Bundle config template
-    ├── artifacts-tf.tf.example # Artifact resource template
-    └── operator-md.md          # Runbook template
+├── .claude-plugin/
+│   └── marketplace.json
+└── massdriver/
+    ├── .claude-plugin/
+    │   └── plugin.json
+    └── skills/
+        └── massdriver/
+            ├── SKILL.md              # Core instructions
+            ├── PATTERNS.md           # Complete bundle and artifact examples
+            ├── references/
+            │   ├── alarms.md         # AWS/GCP/Azure monitoring setup
+            │   └── compliance.md     # Checkov remediation workflow
+            └── snippets/
+                ├── massdriver-yaml.yaml    # Bundle config template
+                ├── artifacts-tf.tf.example # Artifact resource template
+                └── operator-md.md          # Runbook template
 ```
 
 ## Requirements
 
 - [Massdriver CLI](https://docs.massdriver.cloud/cli/overview) (`mass`)
 - OpenTofu or Terraform
+
+## Learn More
+
+- [Massdriver Documentation](https://docs.massdriver.cloud/)
+- [Bundle Development Guide](https://docs.massdriver.cloud/bundles)
+- [Open Source Bundles](https://github.com/massdriver-cloud/aws-rds-postgres) (examples)
 
 ## License
 
