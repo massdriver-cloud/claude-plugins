@@ -50,7 +50,7 @@ massdriver-skill/
 ## Requirements
 
 - [Massdriver CLI](https://docs.massdriver.cloud/cli/overview) (`mass`)
-- OpenTofu or Terraform
+- An IaC tool: OpenTofu, Terraform, Helm, Bicep, [yours here]
 
 ## Learn More
 
