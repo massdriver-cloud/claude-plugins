@@ -5,7 +5,11 @@ Build infrastructure bundles for [Massdriver](https://massdriver.cloud), the int
 ## Installation
 
 ```bash
+# Add the marketplace
 /plugin marketplace add massdriver-cloud/massdriver-skill
+
+# Install the plugin
+/plugin install massdriver@massdriver-cloud-massdriver-skill
 ```
 
 ## What This Skill Does
