@@ -1,12 +1,12 @@
 {
   "name": "massdriver",
-  "description": "Develop infrastructure bundles for Massdriver's self-service cloud platform with guardrails",
-  "version": "1.0.0",
+  "description": "Develop and test Massdriver infrastructure bundles with two modes: FULL (interactive deploy loop with compliance remediation) or BUILD-ONLY (local validation). Supports use-case oriented bundle design, preset configuration, and automated compliance iteration.",
+  "version": "2.0.0",
   "author": {
     "name": "Massdriver",
     "url": "https://massdriver.cloud"
   },
   "repository": "https://github.com/massdriver-cloud/claude-plugins",
   "license": "Apache-2.0",
-  "keywords": ["infrastructure", "iac", "terraform", "opentofu", "bundles", "devops", "platform-engineering"]
+  "keywords": ["infrastructure", "iac", "terraform", "opentofu", "bundles", "devops", "platform-engineering", "compliance", "checkov"]
 }

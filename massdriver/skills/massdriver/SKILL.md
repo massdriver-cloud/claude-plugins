@@ -1,27 +1,26 @@
 ---
 name: massdriver
-description: Helps develop Massdriver bundles, artifact definitions, and platform integrations. Auto-activates when working with massdriver.yaml, bundles/, artifact-definitions/, or platforms/ directories. Provides patterns, scaffolding guidance, and validation rules for the Massdriver catalog.
+description: Develop and test Massdriver infrastructure bundles. Operates in two modes - FULL (interactive deploy loop with compliance remediation) or BUILD-ONLY (local validation without publishing). Auto-activates when working with massdriver.yaml, bundles/, artifact-definitions/, or platforms/ directories. Use when creating new bundles, modifying IaC, testing deployments, or fixing compliance findings.
 ---
 
 # Massdriver Bundle Development
 
-You are helping develop infrastructure bundles and artifact definitions for Massdriver. This skill provides patterns, guard rails, and workflows for the massdriver-catalog repository.
+You are helping develop infrastructure bundles for Massdriver. This skill provides two operational modes, patterns, and workflows for bundle development.
 
 ## Table of Contents
 
+- [Operational Modes](#operational-modes)
+- [Full Mode Workflow](#full-mode-workflow)
+- [Build-Only Mode Workflow](#build-only-mode-workflow)
 - [Core Concepts](#core-concepts)
-- [What Can Be a Bundle?](#what-can-be-a-bundle)
+- [Bundle Design Philosophy](#bundle-design-philosophy)
 - [Bundle Scoping and Resource Lifecycle](#bundle-scoping-and-resource-lifecycle)
-- [How Artifacts Enable IaC](#how-artifacts-enable-iac)
 - [Schema Validation](#schema-validation)
 - [Critical Rules](#critical-rules)
 - [File Responsibilities](#file-responsibilities)
-- [README.md and Changelog](#readmemd-and-changelog)
-- [Quick Start Workflows](#quick-start-workflows)
 - [Common Patterns](#common-patterns)
 - [Checkov Security Configuration](#checkov-security-configuration)
 - [Validation Checklist](#validation-checklist)
-- [End-to-End Testing](#end-to-end-testing)
 - [Common Mistakes & Fixes](#common-mistakes--fixes)
 - [Commands Reference](#commands-reference)
 
@@ -31,333 +30,372 @@ You are helping develop infrastructure bundles and artifact definitions for Mass
 - [references/compliance.md](./references/compliance.md) - Post-deployment Checkov remediation
 - [snippets/](./snippets/) - Copy-paste templates
 
+---
+
+## Operational Modes
+
+When starting bundle work, determine the mode:
+
+### Full Mode (Deploy Loop)
+**Use when:** Testing bundles end-to-end, validating compliance, iterating on real infrastructure.
+
+The full mode workflow:
+1. Gather requirements interactively
+2. Design bundle with presets
+3. Build, publish (development only), and deploy
+4. Monitor compliance findings, iterate until clean
+5. Never publish stable without explicit human authorization
+
+### Build-Only Mode
+**Use when:** Developing locally, validating syntax, no cloud access needed.
+
+The build-only mode workflow:
+1. `mass bundle build`
+2. `tofu init && tofu validate`
+3. Iterate on code until validation passes
+4. No publishing, no deployments
+
+---
+
+## Full Mode Workflow
+
+### Phase 1: Requirements Gathering
+
+Before writing code, gather these inputs through conversation:
+
+**1. Use Case Description**
+- What problem does this bundle solve?
+- Who is the target user (developer, data scientist, ops)?
+- What's the operational context (dev/staging/prod)?
+
+**2. Resource Scoping**
+Based on the use case, suggest appropriate cloud resources:
+- Check existing bundles: `mass bundle list`
+- Check existing artifacts: `mass def list`
+- Propose resources that fit the lifecycle tier (foundational/stateful/compute)
+
+**3. Preset Design**
+Design `params.examples` presets for common configurations:
+```yaml
+params:
+  examples:
+    - __name: Development
+      instance_type: "t3.small"
+      storage_gb: 20
+      multi_az: false
+    - __name: Production
+      instance_type: "r6g.large"
+      storage_gb: 100
+      multi_az: true
+```
+
+**4. Compliance Strategy**
+Understand compliance requirements:
+- Which severity levels matter? (HIGH always, MEDIUM usually, LOW optional)
+- Any checks to hardcode vs make user-configurable?
+- Note: Full findings emerge during deployment - iterate as they appear
+
+**5. Project/Environment Setup**
+Confirm deployment target:
+- User provides existing project, or create one: `mass project create <slug> --name "<Name>"`
+- User provides environment, or create one: `mass env create <slug> --name "<Name>"`
+- Environment must have cloud credential artifact attached (user sets up in UI)
+
+### Phase 2: Bundle Development
+
+Follow the bundle creation workflow:
+
+1. **Scaffold the bundle:**
+   ```bash
+   mkdir -p bundles/my-bundle/src
+   ```
+
+2. **Check/create artifact definitions:**
+   - Run `mass def list` to see existing definitions
+   - If bundle needs a new artifact type, create `artifact-definitions/<name>/massdriver.yaml`
+   - Publish new definitions: `mass definition publish artifact-definitions/<name>/massdriver.yaml`
+   - **Warning:** Published definitions are live immediately—avoid breaking changes
+
+3. **Create massdriver.yaml** with:
+   - Params (with presets in `examples`)
+   - Connections (dependencies from existing artifacts)
+   - Artifacts (what this bundle produces)
+   - UI ordering
+
+4. **Create src/main.tf** with IaC code
+
+5. **Create src/artifacts.tf** with `massdriver_artifact` resources
+
+6. **Build and validate locally:**
+   ```bash
+   cd bundles/my-bundle
+   mass bundle build
+   cd src && tofu init && tofu validate
+   ```
+
+### Phase 3: Deploy Loop
+
+**Initial Setup (once per package):**
+```bash
+# Publish development release
+mass bundle publish --development
+
+# Create package from bundle
+mass pkg create <pkg-slug> --bundle <bundle-name>
+
+# Set to development release channel (auto-deploys on publish)
+mass pkg version <pkg-slug>@latest --release-channel development
+
+# Configure package params
+cat > /tmp/params.json << 'EOF'
+{"param1": "value1", "param2": "value2"}
+EOF
+mass pkg cfg <pkg-slug> --params=/tmp/params.json
+
+# Initial deploy
+mass pkg deploy <pkg-slug> -m "Initial deployment for testing"
+```
+
+**Iteration Loop:**
+```bash
+# Make code changes
+# ...
+
+# Republish - package auto-upgrades and auto-deploys
+mass bundle publish --development
+
+# Check deployment logs for Checkov findings
+mass logs <deployment-id> 2>&1 | grep -E "Check:|FAILED"
+
+# Fix findings, republish, repeat until clean
+```
+
+**Testing Different Configurations:**
+Create multiple packages to test different param combinations:
+```bash
+mass pkg create <pkg-slug>-variant2 --bundle <bundle-name>
+mass pkg version <pkg-slug>-variant2@latest --release-channel development
+mass pkg cfg <pkg-slug>-variant2 --params=/tmp/variant2-params.json
+mass pkg deploy <pkg-slug>-variant2 -m "Testing alternate configuration"
+```
+
+**Config Changes (require manual deploy):**
+```bash
+mass pkg cfg <pkg-slug> --params=/tmp/updated-params.json
+mass pkg deploy <pkg-slug> -m "Updated storage to 100GB, enabled deletion protection"
+```
+
+### Phase 4: Compliance Remediation
+
+As Checkov findings emerge from deployments:
+
+1. **Extract findings:**
+   ```bash
+   mass logs <deployment-id> 2>&1 | grep -E "Check:|FAILED"
+   ```
+
+2. **Triage by severity:**
+   - **HIGH**: Fix by hardcoding secure defaults or adding params
+   - **MEDIUM**: Fix if straightforward, document if deferred
+   - **LOW/IGNORE**: Add to `src/.checkov.yml` with justification
+
+3. **Fix and republish:**
+   ```bash
+   # Edit code to fix finding
+   mass bundle publish --development
+   # Package auto-deploys, check logs again
+   ```
+
+4. **For intentional skips**, update `src/.checkov.yml`:
+   ```yaml
+   skip-check:
+     # LOW: Egress rule needed for AWS API calls
+     - CKV_AWS_382
+   ```
+
+See [references/compliance.md](./references/compliance.md) for detailed remediation guidance.
+
+### Phase 5: Finalization
+
+**CRITICAL: Never publish stable without explicit human authorization.**
+
+When the bundle is compliance-clean and tested:
+1. Update README.md with changelog entry
+2. Bump version in massdriver.yaml
+3. Wait for human to authorize: `mass bundle publish`
+
+---
+
+## Build-Only Mode Workflow
+
+For local development without deployments:
+
+```bash
+# 1. Create/edit bundle files
+cd bundles/my-bundle
+
+# 2. Build schemas
+mass bundle build
+
+# 3. Validate IaC
+cd src && tofu init && tofu validate
+
+# 4. Fix errors, repeat steps 2-3
+
+# 5. When ready for deployment, switch to Full Mode
+```
+
+Build-only mode is useful for:
+- Initial development before project/environment is ready
+- Rapid iteration on Terraform code
+- CI validation pipelines
+- Working offline
+
+---
+
 ## Core Concepts
 
 **Bundle**: Reusable IaC module with declarative configuration (`massdriver.yaml` + `src/` code)
 
-**Artifact Definition**: Schema contract defining data structures passed between bundles. Supports:
+**Artifact Definition**: Schema contract defining data passed between bundles. Lives in `artifact-definitions/<name>/massdriver.yaml`. Supports:
 - **Schema** → Generates UI form for manual artifact creation
-- **Instructions** (`instructions/`) → Markdown walkthroughs (e.g., how to get credentials from AWS Console)
+- **Instructions** (`instructions/`) → Markdown walkthroughs for obtaining values
 - **Exports** (`exports/`) → Downloadable files (e.g., kubeconfig)
-- **Environment Defaults** (`ui.environmentDefaultGroup`) → Set as default for an environment; packages auto-receive it
-- **Connection Presentation** → Linkable handles vs environment-default-only (enables cross-project sharing)
+- **Environment Defaults** (`ui.environmentDefaultGroup`) → Auto-assign to packages
+- **Connection Orientation** (`ui.connectionOrientation`) → How connections appear in UI
 
-**Artifact**: Instance of an artifact definition containing actual data (credentials, connection strings, resource IDs). Created by:
-- Bundles (via `massdriver_artifact` resource in artifacts.tf)
-- Users (entering data via UI form generated from artifact definition schema)
+**Platform**: An artifact definition for cloud credentials. Lives in `platforms/<name>/massdriver.yaml`. Identical structure to artifact definitions—separate directory for organization.
 
-**Platform**: An artifact definition for cloud authentication (`platforms/*/massdriver.yaml`). Technically identical to artifact definitions - the separate directory is purely organizational to distinguish infrastructure artifacts from authentication/onboarding artifacts. Platforms are pre-configured credential schemas (AWS IAM role, GCP service account, etc.) that jumpstart cloud onboarding.
+**Artifact**: Instance of an artifact definition containing actual data (credentials, connection strings). Created by bundles (`massdriver_artifact` resource) or users (UI form).
 
-**Connection**: How bundles receive artifacts. When a bundle declares a connection (e.g., `$ref: aws-iam-role`), users assign an artifact of that type to it. At deploy time, the artifact data flows into the bundle as a Terraform variable.
+**Connection**: How bundles receive artifacts. Declared in `massdriver.yaml`, assigned in UI, flows as Terraform variable at deploy.
 
-**Key Flow**: Edit `massdriver.yaml` → `mass bundle build` (generates schemas) → `tofu validate` → `mass bundle publish --development`
+**Key Flow**: Edit `massdriver.yaml` → `mass bundle build` → `tofu validate` → `mass bundle publish --development`
 
-## What Can Be a Bundle?
+---
 
-**Massdriver orchestrates IaC tools, not just "persistent infrastructure."** If a provisioner can deploy it, it's a valid bundle:
+## Bundle Design Philosophy
 
-| Provisioner | What it can deploy |
-|-------------|-------------------|
-| OpenTofu/Terraform | AWS/GCP/Azure resources, Helm releases, K8s manifests |
-| Helm | K8s Deployments, Jobs, CronJobs, StatefulSets, etc. |
-| CloudFormation | Anything AWS supports including Step Functions, SageMaker Pipelines |
-| Kubernetes | Raw manifests - Jobs, CronJobs, Spark operators, Argo workflows |
-| Pulumi, CDK, etc. | Whatever they support |
+### Use-Case Oriented Bundles
 
-**Valid bundle content includes:**
-- Kubernetes CronJobs and Jobs (scheduled/triggered workloads)
-- Lambda functions and Step Functions (serverless orchestration)
-- SageMaker Pipelines (ML workflow definitions)
-- Spark/Flink operators (data processing)
-- Argo Workflows (CI/CD pipelines)
-- VMware resources, on-prem infrastructure
+Design bundles around developer use cases, not raw cloud APIs:
 
-**The key insight:** A CronJob that runs nightly is still infrastructure that needs to be deployed, versioned, and managed - even though each execution is ephemeral.
+**Bad**: `aws-s3-bucket` (exposes every S3 option)
+**Good**: `asset-storage` (for static assets), `data-lake-landing` (for data ingestion)
+
+### The 80/20 Rule
+
+A good bundle covers 80% of use cases. If a developer needs something outside that, they fork it. Resist over-generalization.
+
+### Intentional Omission
+
+Good bundles don't just encode defaults—they intentionally omit capabilities that don't belong:
+- Asset storage shouldn't expose Glacier archival
+- Logging buckets shouldn't expose public access
+- Dev databases shouldn't offer Multi-AZ
+
+### Developer-Focused Interface
+
+Ask application questions, not infrastructure questions:
+- **Bad**: "What instance class?" / "How many IOPS?"
+- **Good**: "How much traffic do you expect?" / "What availability level?"
+
+Presets (`params.examples`) anchor common choices in familiar language.
+
+---
 
 ## Bundle Scoping and Resource Lifecycle
 
-**This is critical for designing composable, maintainable bundles.** The lifecycle principle helps you decide what goes TOGETHER in a bundle - not what CAN be a bundle. Resources that share the same operational lifecycle should be bundled together.
-
-### The Lifecycle Principle (for Scoping)
+### The Lifecycle Principle
 
 Ask these questions when deciding what belongs in a bundle:
 
-1. **"If I delete this bundle, what should disappear?"** - All those resources belong together
-2. **"If I change this setting, what else must change?"** - Those resources share configuration lifecycle
-3. **"Who owns this operationally?"** - Resources with different owners should be separate bundles
-4. **"How often does this change?"** - Resources with vastly different change frequencies should be separate
+1. **"If I delete this bundle, what should disappear?"** → All those resources belong together
+2. **"Who owns this operationally?"** → Different owners = separate bundles
+3. **"How often does this change?"** → Different change frequencies = separate bundles
 
-### Lifecycle Tiers (from long-lived to ephemeral)
+### Lifecycle Tiers
 
-**Foundational Infrastructure** (rarely changes, shared by many things):
-- Networks/VPCs, subnets, NAT gateways, route tables
-- Container registries, DNS zones
-- *Owned by: Platform team*
+**Foundational** (rarely changes): Networks, registries, DNS zones
+**Stateful** (medium lifecycle): Databases, caches, queues
+**Compute** (frequent changes): Applications, functions, jobs
 
-**Stateful Services** (medium lifecycle, careful changes):
-- Databases, caches, message queues, storage buckets
-- Search clusters, data warehouses
-- *Owned by: Platform team or application team*
+### What Becomes a Connection
 
-**Compute & Applications** (frequent changes):
-- Kubernetes deployments, serverless functions
-- Application containers, API gateways
-- *Owned by: Application team*
+Resources that exist independently and are shared:
+- VPC → network connection
+- Kubernetes cluster → cluster connection
+- Cloud credentials → authentication connection
 
-### What Stays IN the Bundle (Supporting Resources)
+### What Stays in the Bundle
 
-Resources that are **specific to and managed with** the primary resource:
-
-```
-aws-rds-postgres bundle contains:
-├── aws_db_instance (primary resource)
-├── aws_db_subnet_group (RDS-specific, uses VPC subnets)
-├── aws_security_group (RDS-specific ingress rules)
-├── aws_kms_key (encryption for this DB only)
-├── aws_db_parameter_group (DB configuration)
-├── aws_iam_role (enhanced monitoring for this DB)
-└── CloudWatch alarms (monitoring this DB)
-```
-
-These all share the same lifecycle - when you delete the database, you delete its subnet group, its security group, its encryption key, etc.
-
-### What Becomes a CONNECTION (Dependencies)
-
-Resources that **exist independently** and are **shared** by multiple things:
-
-```
-aws-rds-postgres connections:
-├── aws_authentication → massdriver/aws-iam-role (credential to deploy)
-└── network → massdriver/aws-vpc (VPC created by another bundle)
-```
-
-The VPC has its own lifecycle - it was created before the database and will outlive it. Multiple databases, applications, and services share it.
-
-### Anti-Pattern: Coupled Lifecycles
-
-**BAD** - Creating a VPC inside a database bundle:
-```hcl
-# Don't do this in a postgres bundle!
-resource "aws_vpc" "main" { ... }
-resource "aws_subnet" "private" { ... }
-resource "aws_db_instance" "main" { ... }
-```
-
-Problems:
-- Deleting the database deletes the network (catastrophic if shared)
-- Can't deploy multiple databases to the same network
-- Can't reuse the network for other services
-- Violates single-responsibility principle
-
-**GOOD** - Taking network as a connection:
-```yaml
-# massdriver.yaml
-connections:
-  required:
-    - aws_authentication
-    - network
-  properties:
-    aws_authentication:
-      $ref: massdriver/aws-iam-role
-    network:
-      $ref: massdriver/aws-vpc
-```
-
-```hcl
-# main.tf - uses the network, doesn't create it
-resource "aws_db_subnet_group" "main" {
-  subnet_ids = [for s in var.network.data.infrastructure.private_subnets : s.arn]
-}
-
-resource "aws_db_instance" "main" {
-  db_subnet_group_name = aws_db_subnet_group.main.name
-  # ...
-}
-```
-
-### Discovering Existing Bundles and Artifacts
-
-Before creating a bundle, check what already exists:
-
-```bash
-# List available bundles (potential patterns to follow)
-mass bundle list
-
-# List artifact definitions (potential connections)
-mass def list
-
-# Get details on an artifact definition schema
-mass def get massdriver/aws-vpc
-mass def get massdriver/postgresql-authentication
-```
-
-If a network bundle exists, use it as a connection. If a database artifact definition exists, produce that artifact type.
+Resources specific to and managed with the primary resource:
+- Database bundle includes: DB instance, subnet group, security group, KMS key, parameter group
+- All share the same lifecycle—delete one, delete all
 
 ### Scoping Decision Tree
 
 ```
 Is this resource...
-│
-├─ Shared by multiple things? ──────────────────────> Separate bundle (connection)
-│   (VPC, K8s cluster, DNS zone)
-│
-├─ Created before and lives after primary? ─────────> Separate bundle (connection)
-│   (Network for a database, cluster for an app)
-│
-├─ Owned by a different team? ──────────────────────> Separate bundle (connection)
-│   (Platform team's network vs app team's database)
-│
-├─ Changes on a very different schedule? ───────────> Separate bundle (connection)
-│   (VPC changes yearly, app deploys daily)
-│
-└─ Specific to and dies with the primary resource? ─> Same bundle
-    (DB security group, DB parameter group, DB KMS key)
+├─ Shared by multiple things? ────────────> Connection
+├─ Created before and lives after? ───────> Connection
+├─ Owned by a different team? ────────────> Connection
+├─ Changes on very different schedule? ───> Connection
+└─ Specific to and dies with primary? ────> Same bundle
 ```
 
-### Real-World Scoping Examples
-
-**AWS VPC Bundle** (foundational):
-- VPC, subnets, internet gateway, NAT gateways, route tables, flow logs
-- All network foundation that rarely changes
-- Produces: `massdriver/aws-vpc` artifact
-
-**AWS RDS PostgreSQL Bundle** (stateful service):
-- RDS instance, DB subnet group, security group, KMS key, parameter group, monitoring
-- Takes: `massdriver/aws-vpc` (network), `massdriver/aws-iam-role` (auth)
-- Produces: `massdriver/postgresql-authentication` artifact
-
-**K8s Application Bundle** (compute):
-- Deployment, service, ingress, HPA, configmaps
-- Takes: `massdriver/kubernetes-cluster`, `massdriver/postgresql-authentication`
-- Produces: `massdriver/api` artifact (optional)
-
-**GCP Network Layering** (fine-grained for multi-region):
-- `gcp-global-network`: Just the VPC (global)
-- `gcp-subnetwork`: Regional subnet, takes global-network as connection
-- Enables: one global network, multiple regional subnets with separate lifecycles
-
-## How Artifacts Enable IaC
-
-Artifacts bridge configuration to bundle deployments:
-
-```
-1. Artifact definition schema → UI form (user enters data)
-2. Saved form → Artifact stored in Massdriver
-3. User assigns artifact to package connection in project environment
-4. Bundle deploys → Artifact data flows via connection variable
-5. Terraform uses the data (provider auth, resource config, etc.)
-```
-
-**Example: AWS RDS Bundle with credential + network artifacts**
-```yaml
-# Bundle's massdriver.yaml
-connections:
-  required:
-    - aws_authentication
-    - network
-  properties:
-    aws_authentication:
-      $ref: aws-iam-role  # Credential artifact for provider auth
-    network:
-      $ref: network       # Infrastructure artifact from another bundle
-```
-
-```hcl
-# Bundle's src/main.tf
-provider "aws" {
-  region = var.network.region  # Or var.region from params
-  assume_role {
-    role_arn    = var.aws_authentication.arn
-    external_id = try(var.aws_authentication.external_id, null)
-  }
-  default_tags {
-    tags = var.md_metadata.default_tags
-  }
-}
-
-resource "aws_db_instance" "main" {
-  vpc_security_group_ids = [for s in var.network.subnets : s.id]
-}
-```
-
-## Artifact Definition Capabilities
-
-All artifact definitions (including platforms) support these features:
-
-**Schema** → Generates UI form; structure must match what consuming bundles expect
-
-**Instructions** (`instructions/`) → Markdown walkthroughs showing users how to obtain values (e.g., getting IAM role ARN from AWS Console)
-
-**Exports** (`exports/`) → Downloadable files (e.g., kubeconfig for Kubernetes credentials)
-
-**Environment Defaults** (`ui.environmentDefaultGroup`) → Artifact can be set as default for an environment. Packages in that environment automatically receive it without explicit connection.
-
-**Connection Presentation** → Controls whether connections appear as:
-- Linkable handles (user draws connections in UI)
-- Environment defaults only (automatic, no visible connection)
-
-This enables cross-project resource sharing: Project A manages a network, Project B deploys into it but doesn't manage it.
+---
 
 ## Schema Validation
 
-Massdriver validates `massdriver.yaml` files against JSON schemas:
+Massdriver validates `massdriver.yaml` against:
 - Bundles: https://api.massdriver.cloud/json-schemas/bundle.json
 - Artifact Definitions: https://api.massdriver.cloud/json-schemas/artifact-definition.json
+
+---
 
 ## Critical Rules
 
 ### 1. NEVER Edit Generated Files
-These files are auto-generated by `mass bundle build` - changes will be overwritten:
-- `schema-*.json` - Generated from massdriver.yaml sections
-- `_massdriver_variables.tf` - Generated from params + connections schemas
+Auto-generated by `mass bundle build` - changes will be overwritten:
+- `schema-*.json`
+- `_massdriver_variables.tf`
 
 ### 2. Namespace Collision Warning
-**Params and connections share the same Terraform variable namespace.**
-
+Params and connections share Terraform variable namespace:
 ```yaml
-# BAD - These will conflict as var.network in Terraform
+# BAD - Both create var.network
 params:
   properties:
-    network:          # Creates var.network
-connections:
-  properties:
-    network:          # Also creates var.network - COLLISION!
-```
-
-Always use distinct names for params and connections.
-
-### 3. Artifact $ref Must Match Definition Name
-The `$ref` value must exactly match the artifact definition directory name:
-
-```yaml
-# massdriver.yaml
+    network:
 connections:
   properties:
     network:
-      $ref: network  # References artifact-definitions/network/massdriver.yaml
+```
+
+### 3. Artifact $ref Must Match Definition Name
+```yaml
+connections:
+  properties:
+    network:
+      $ref: network  # References artifact-definitions/network/
 ```
 
 ### 4. artifacts.tf Must Match massdriver.yaml
-Every entry in `massdriver.yaml` artifacts section needs a corresponding `massdriver_artifact` resource:
-
 ```yaml
 # massdriver.yaml
 artifacts:
   properties:
-    database:         # <-- field name
-      $ref: postgres
+    database:  # <-- field name
 ```
-
 ```hcl
 # src/artifacts.tf
 resource "massdriver_artifact" "database" {
-  field = "database"  # <-- Must match the field name above
-  # ...
+  field = "database"  # Must match
 }
 ```
 
 ### 5. Always Include massdriver Provider
-
 ```hcl
 terraform {
   required_providers {
@@ -369,296 +407,33 @@ terraform {
 }
 ```
 
+---
+
 ## File Responsibilities
 
 | File | Purpose | Editable? |
 |------|---------|-----------|
 | `massdriver.yaml` | Source of truth - params, connections, artifacts, UI | Yes |
-| `README.md` | Bundle documentation (displayed in UI like GitHub README) | Yes |
-| `src/main.tf` | Your IaC code (resources, data sources) | Yes |
+| `README.md` | Bundle documentation (displayed in UI) | Yes |
+| `src/main.tf` | IaC code | Yes |
 | `src/artifacts.tf` | massdriver_artifact resources | Yes |
-| `src/.checkov.yml` | Checkov skip rules (inline comments don't work) | Yes |
+| `src/.checkov.yml` | Checkov skip rules | Yes |
 | `operator.md` | Runbook with mustache templating | Yes |
-| `icon.svg` | Bundle icon | Yes |
 | `schema-*.json` | Generated schemas | **Never** |
 | `_massdriver_variables.tf` | Generated variables | **Never** |
 
-## README.md and Changelog
-
-Every bundle should have a `README.md` in the bundle root directory. This file is displayed in the Massdriver UI similar to how GitHub displays READMEs.
-
-### README Structure
-
-```markdown
-# Bundle Name
-
-Brief description of what this bundle deploys.
-
-## Features
-
-- Feature 1
-- Feature 2
-
-## Architecture
-
-```
-Diagram showing component relationships
-```
-
-## Connections
-
-| Name | Type | Description |
-|------|------|-------------|
-| `connection_name` | `artifact-type` | What it's used for |
-
-## Parameters
-
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `param_name` | type | `default` | What it configures |
-
-## Outputs
-
-- `output_name` - Description
-
-## Changelog
-
-### x.y.z
-
-- Change description
-- Another change
-```
-
-### Changelog Convention
-
-The changelog is maintained at the bottom of README.md under `## Changelog`. Each version gets its own `### x.y.z` section.
-
-**For development releases:** Group changes under the target version number (e.g., `### 0.0.2`), not under the dev timestamp. Development releases like `0.0.2-dev.20260213T120000Z` are iterations toward `0.0.2`.
-
-**When publishing:** Add release notes to the changelog section before publishing:
-
-```markdown
-## Changelog
-
-### 0.0.3
-
-- Add support for custom domains
-- Fix memory leak in connection pooling
-
-### 0.0.2
-
-- Switch to Node.js runtime
-- Add VPC integration
-- Use .checkov.yml for security configuration
-
-### 0.0.1
-
-- Initial release
-```
-
-## Quick Start Workflows
-
-### Creating a New Bundle
-
-**Step 0: Scope the bundle correctly (CRITICAL)**
-
-Before writing any code, determine what belongs in this bundle:
-
-```bash
-# Check what bundles and artifacts already exist
-mass bundle list
-mass def list
-
-# Inspect artifact schemas for potential connections
-mass def get massdriver/aws-vpc
-mass def get massdriver/postgresql-authentication
-```
-
-Ask yourself:
-- What foundational resources does this need? → Those become **connections**
-- What resources are specific to this and share its lifecycle? → Those go **in the bundle**
-- What artifact type should this produce? → Check if a definition exists
-
-**Example thought process for an RDS PostgreSQL bundle:**
-- Needs a VPC → `massdriver/aws-vpc` exists, use as connection
-- Needs AWS credentials → `massdriver/aws-iam-role` exists, use as connection
-- DB instance, subnet group, security group, KMS key → all RDS-specific, go IN bundle
-- Should produce database credentials → `massdriver/postgresql-authentication` exists, produce that
-
-1. Create bundle directory:
-   ```bash
-   mkdir -p bundles/my-bundle/src
-   ```
-
-2. Create `massdriver.yaml` with connections for dependencies (see `snippets/massdriver-yaml.yaml` for template)
-
-3. Create `src/main.tf` with your infrastructure code (only resources specific to this bundle)
-
-4. Create `src/artifacts.tf` with `massdriver_artifact` resources for each artifact
-
-5. Create `operator.md` for operational runbook
-
-6. Build and validate:
-   ```bash
-   cd bundles/my-bundle
-   mass bundle build
-   cd src && tofu init && tofu validate
-   ```
-
-7. Publish:
-   ```bash
-   mass bundle publish
-   ```
-
-### Adding a Connection to a Bundle
-
-1. Add connection to `massdriver.yaml`:
-   ```yaml
-   connections:
-     required:
-       - network    # Add to required if mandatory
-     properties:
-       network:
-         $ref: network
-         title: Network
-   ```
-
-2. Rebuild to generate variables:
-   ```bash
-   mass bundle build
-   ```
-
-3. Use connection data in Terraform:
-   ```hcl
-   # Connection becomes a variable with artifact's structure
-   resource "example" "main" {
-     vpc_id     = var.network.id
-     subnet_ids = [for s in var.network.subnets : s.id]
-   }
-   ```
-
-### Creating an Artifact Definition
-
-1. Create directory and `massdriver.yaml`:
-   ```bash
-   mkdir -p artifact-definitions/my-artifact
-   ```
-
-2. Create `artifact-definitions/my-artifact/massdriver.yaml`:
-   ```yaml
-   name: my-artifact
-   label: My Artifact
-
-   schema:
-     title: My Artifact
-     description: Description of what this artifact represents
-     type: object
-     required:
-       - id
-     properties:
-       id:
-         title: ID
-         type: string
-   ```
-
-3. Publish:
-   ```bash
-   mass definition publish artifact-definitions/my-artifact/massdriver.yaml
-   ```
-
-### Creating a Platform
-
-1. Create platform directory:
-   ```bash
-   mkdir -p platforms/my-cloud/instructions
-   ```
-
-2. Create `platforms/my-cloud/massdriver.yaml`:
-   ```yaml
-   name: my-cloud-credentials
-   label: My Cloud Credentials
-   icon: https://example.com/my-cloud-icon.svg
-
-   ui:
-     environmentDefaultGroup: credentials  # Groups with other credentials
-     instructions:
-       - label: Console Setup
-         path: ./instructions/Console Setup.md
-
-   exports: []  # Optional: downloadable files like kubeconfig
-
-   schema:
-     title: My Cloud Credentials
-     description: Authentication for My Cloud provider
-     type: object
-     required:
-       - api_key
-     properties:
-       api_key:
-         $md.sensitive: true
-         title: API Key
-         description: Your My Cloud API key
-         type: string
-       region:
-         title: Region
-         description: Default region for operations
-         type: string
-         examples:
-           - "us-east-1"
-   ```
-
-3. Create onboarding instructions (`platforms/my-cloud/instructions/Console Setup.md`):
-   ```markdown
-   # Getting Your API Key
-
-   1. Log into My Cloud Console
-   2. Navigate to Settings → API Keys
-   3. Click "Create New Key"
-   4. Copy the key and paste it below
-   ```
-
-4. Publish:
-   ```bash
-   mass definition publish platforms/my-cloud/massdriver.yaml
-   ```
-
-**Platform Schema Design Rules:**
-- Schema must match what Terraform/OpenTofu provider needs for authentication
-- Mark sensitive fields with `$md.sensitive: true`
-- Provide `examples` to help users understand expected formats
-
-**Instruction Templating:**
-Instructions support dynamic variables like `{{EXTERNAL_ID}}` that are populated when displayed to users. This allows pre-filling values that Massdriver generates (like external IDs for AWS role trust policies).
+---
 
 ## Common Patterns
 
-### Provider Blocks Mirror Credential Artifact Schemas
+### Provider Blocks Use Credential Artifacts
 
-**Critical:** When configuring cloud providers, the provider block arguments must match the credential artifact definition schema. The artifact defines what authentication data is available; the provider block consumes it.
-
-**Example: AWS Provider with aws-iam-role artifact**
-
-The `aws-iam-role` artifact definition schema:
-```yaml
-# platforms/aws/massdriver.yaml (or artifact-definitions/aws-iam-role)
-schema:
-  properties:
-    arn:
-      title: IAM Role ARN
-      type: string
-    external_id:
-      title: External ID
-      type: string  # Optional field
-```
-
-The provider block must use ALL relevant fields from the artifact:
 ```hcl
-# src/main.tf
 provider "aws" {
   region = var.region
   assume_role {
     role_arn    = var.aws_authentication.arn
-    external_id = try(var.aws_authentication.external_id, null)  # Handle optional field
+    external_id = try(var.aws_authentication.external_id, null)
   }
   default_tags {
     tags = var.md_metadata.default_tags
@@ -666,57 +441,22 @@ provider "aws" {
 }
 ```
 
-**Example: GCP Provider with gcp-service-account artifact**
-```hcl
-provider "google" {
-  project     = var.gcp_authentication.project_id
-  region      = var.region
-  credentials = var.gcp_authentication.service_account_key
-}
-```
-
-**Example: Azure Provider with azure-service-principal artifact**
-```hcl
-provider "azurerm" {
-  features {}
-  subscription_id = var.azure_authentication.subscription_id
-  tenant_id       = var.azure_authentication.tenant_id
-  client_id       = var.azure_authentication.client_id
-  client_secret   = var.azure_authentication.client_secret
-}
-```
-
-**Key Rules:**
-1. **Inspect the artifact schema first** - Run `mass def get <credential-artifact>` to see all available fields
-2. **Use all authentication fields** - Missing fields (like `external_id`) cause auth failures
-3. **Handle optional fields** - Use `try()` or conditional logic for optional schema properties
-4. **Match types exactly** - If the schema says `integer`, don't treat it as a string
-
-### Accessing Connection Data in Terraform
+### Accessing Connection Data
 
 ```hcl
-# Simple field access
 var.network.id
-var.network.cidr
-
-# Nested object
 var.database.auth.hostname
-var.database.auth.password
-
-# Array iteration
-[for s in var.network.subnets : s.id]
 [for s in var.network.subnets : s.id if s.type == "private"]
 ```
 
-### Creating Artifacts (artifacts.tf)
+### Creating Artifacts
 
 ```hcl
 resource "massdriver_artifact" "database" {
-  field = "database"  # Must match artifacts property name in massdriver.yaml
+  field = "database"
   name  = "PostgreSQL ${var.md_metadata.name_prefix}"
 
   artifact = jsonencode({
-    # Structure must match artifact-definitions/postgres/massdriver.yaml schema
     id = aws_rds_cluster.main.id
     auth = {
       hostname = aws_rds_cluster.main.endpoint
@@ -725,131 +465,75 @@ resource "massdriver_artifact" "database" {
       username = var.username
       password = random_password.main.result
     }
-    policies = [
-      { id = "read", name = "Read Only" },
-      { id = "write", name = "Read/Write" }
-    ]
   })
 }
 ```
 
-### Adding Alarms to Bundles
-
-For monitoring alarms (AWS CloudWatch, GCP Cloud Monitoring, Azure Monitor), see [references/alarms.md](./references/alarms.md).
-
-### Sensitive Fields in Artifact Definitions
-
-```yaml
-# In artifact-definitions/*/massdriver.yaml schema section
-schema:
-  properties:
-    password:
-      $md.sensitive: true
-      $md.copyable: false
-      title: Password
-      type: string
-```
-
-### Immutable Fields (Cannot Change After Creation)
+### Param Presets
 
 ```yaml
 params:
+  examples:
+    - __name: Development
+      instance_type: "t3.small"
+      storage_gb: 20
+    - __name: Production
+      instance_type: "r6g.large"
+      storage_gb: 100
   properties:
-    db_version:
+    instance_type:
       type: string
-      $md.immutable: true  # Cannot be changed after initial deployment
-      enum: ["14", "15", "16"]
+    storage_gb:
+      type: integer
 ```
 
-### Dynamic Dropdowns from Connection Data ($md.enum)
+### Dynamic Dropdowns from Connection Data
 
 ```yaml
 params:
   properties:
     database_policy:
       type: string
-      title: Database Access Policy
       $md.enum:
-        connection: database       # Source connection name
-        options: .policies         # JQ expression to options array
-        value: .name              # JQ expression to extract option value
-        label: .name              # JQ expression to extract option label (optional)
-```
-
-### UI Ordering
-
-```yaml
-ui:
-  ui:order:
-    - db_version          # Show first
-    - database_name
-    - username
-    - "*"                 # All remaining fields
-```
-
-### Using md_metadata
-
-```hcl
-# Naming resources
-resource "aws_db_instance" "main" {
-  identifier = "${var.md_metadata.name_prefix}-postgres"
-  tags       = var.md_metadata.default_tags
-}
-
-# Available metadata fields
-var.md_metadata.name_prefix           # Unique name prefix
-var.md_metadata.default_tags          # Tags to apply to resources
-var.md_metadata.deployment.id         # Deployment identifier
-var.md_metadata.observability.alarm_webhook_url  # Alerting endpoint
+        connection: database
+        options: .policies
+        value: .name
 ```
 
 ### Optional Connections
 
 ```yaml
-# massdriver.yaml - don't add to required array
 connections:
   required:
-    - network    # Required
+    - network  # Required
   properties:
     network:
       $ref: network
     bucket:
-      $ref: bucket  # Optional - not in required array
+      $ref: bucket  # Optional - not in required
 ```
 
 ```hcl
-# Terraform - check for null
 locals {
   has_bucket = var.bucket != null
 }
-
-resource "example" "main" {
-  bucket_name = local.has_bucket ? var.bucket.name : null
-}
 ```
+
+---
 
 ## Checkov Security Configuration
 
-Checkov runs during deployment to check for security issues. Configure skip rules using `src/.checkov.yml` (inline comments don't work in Massdriver's Checkov version).
-
-### .checkov.yml Format
+Use `src/.checkov.yml` (inline comments don't work):
 
 ```yaml
-# src/.checkov.yml
 skip-check:
-  # S3 Bucket
-  - CKV_AWS_144  # Cross-region replication not needed
-  - CKV_AWS_145  # KMS encryption not required for this use case
-
-  # Lambda Function
-  - CKV_AWS_116  # DLQ not required for simple API
-  - CKV_AWS_173  # Environment variables contain credentials by design
+  # S3 Bucket - cross-region replication not needed
+  - CKV_AWS_144
+  # Lambda - DLQ not required for simple API
+  - CKV_AWS_116
 ```
 
-### Checkov in massdriver.yaml
-
-Configure Checkov behavior in the steps section:
-
+Configure behavior in massdriver.yaml:
 ```yaml
 steps:
   - path: src
@@ -857,202 +541,85 @@ steps:
     config:
       checkov:
         enable: true
-        # Fail deployment only in production
         halt_on_failure: '.params.md_metadata.default_tags["md-target"] == "production"'
 ```
 
-**halt_on_failure options:**
-- `true` - Always fail on Checkov violations
-- `false` - Never fail (just warn)
-- JQ expression - Conditional based on params/connections (e.g., production only)
+### Skip vs. Halt Strategy
+
+**Use skip-check for:** Architectural decisions that are intentionally permanent (e.g., using AWS-managed encryption instead of CMK). These checks provide no value.
+
+**Let checks fail (rely on halt_on_failure) for:** User-configurable security settings (e.g., PITR, deletion protection). In dev, failures appear as warnings in logs—educating developers that their config won't pass in prod. In prod, halt_on_failure stops deployment.
+
+Do NOT skip checks just because a param makes them optional. The warning visibility in dev is valuable feedback.
+
+---
 
 ## Validation Checklist
 
-Before publishing a bundle:
-
-- [ ] `mass bundle build` runs successfully
-- [ ] No param/connection name conflicts (check massdriver.yaml)
-- [ ] Every artifact has a matching `massdriver_artifact` resource
+Before publishing:
+- [ ] `mass bundle build` succeeds
+- [ ] No param/connection name conflicts
+- [ ] Every artifact has matching `massdriver_artifact` resource
 - [ ] `tofu init && tofu validate` passes
-- [ ] Artifact JSON structure matches artifact definition schema
+- [ ] Artifact JSON matches artifact definition schema
 - [ ] Required providers include `massdriver-cloud/massdriver`
 
-## End-to-End Testing
-
-Static validation (`tofu validate`) only checks syntax. To verify a bundle actually works, deploy it through Massdriver's orchestrator:
-
-```bash
-# 1. Build and publish as development (NEVER publish stable unless a human requests it)
-mass bundle build
-mass bundle publish --development
-
-# 2. Create test project/environment (user may provide these)
-mass project create example --name "Test Project"
-mass env create example-test --name "Test Environment"
-
-# 3. Create and configure package from the bundle
-mass pkg create example-test-mydb --bundle my-database-bundle
-
-# 4. Set package to development release channel (one-time setup)
-mass pkg version example-test-mydb@latest --release-channel development
-
-# 5. Configure with JSON params (use file for complex values)
-cat > /tmp/params.json << 'EOF'
-{"database_name": "testdb", "db_version": "16"}
-EOF
-mass pkg cfg example-test-mydb --params=/tmp/params.json
-
-# 6. Initial deploy (only needed once - subsequent publishes auto-deploy)
-mass pkg deploy example-test-mydb -m "Initial deployment"
-
-# 7. Verify artifacts are created correctly
-# Artifact name format: {package-slug}-{field-name}
-mass artifact get example-test-mydb-database
-
-# 8. Iterate: make changes, publish, package auto-upgrades and deploys
-mass bundle publish --development
-# No manual deploy needed - check logs/artifacts to verify
-```
-
-### Package Versions and Release Channels
-
-Packages can be pinned to specific versions or follow release channels:
-
-```bash
-# Set to latest stable version
-mass pkg version example-test-mydb@latest
-
-# Set to specific version
-mass pkg version example-test-mydb@1.2.3
-
-# Set to version constraint (receives updates within constraint)
-mass pkg version example-test-mydb@~1.2
-
-# Use development release channel (receives --development publishes)
-mass pkg version example-test-mydb@latest --release-channel development
-```
-
-**Release Channels:**
-- `stable` (default): Only receives stable releases (`mass bundle publish`)
-- `development`: Receives both stable AND development releases (`mass bundle publish --development`)
-
-**Best Practice for Testing:**
-Set the package to `development` channel once, then every `mass bundle publish --development` automatically upgrades and deploys the package - no manual deploy needed:
-
-```bash
-# One-time setup
-mass pkg version example-test-mydb@latest --release-channel development
-mass pkg deploy example-test-mydb -m "Initial deployment"
-
-# Now iterate freely - just publish, package auto-upgrades and deploys
-mass bundle publish --development  # v0.0.1-dev.20260213T120000Z
-# Package automatically upgrades and deploys - no manual deploy needed!
-
-# Make changes, republish - same version, new timestamp
-mass bundle publish --development  # v0.0.1-dev.20260213T120500Z
-# Package automatically upgrades and deploys again
-```
-
-**CRITICAL - Don't Burn Semver During Development:**
-- Keep the same version number throughout development (e.g., `0.0.1`)
-- The `--development` flag adds a timestamp suffix (e.g., `0.0.1-dev.20260213T120000Z`)
-- Each `--development` publish creates a new dev release without changing the base version
-- Only bump version when ready for a stable release
-- NEVER publish stable (`mass bundle publish` without `--development`) until the bundle is production-ready
-
-**Auto-Upgrade Behavior:**
-- Packages on `development` channel automatically upgrade when new dev releases are published
-- Packages on `stable` channel only upgrade when new stable releases are published
-- Auto-upgrade triggers an automatic deployment - no need to run `mass pkg deploy` after publishing
-
-**When to Manually Deploy:**
-- **Bundle publish** → Auto-deploys (no action needed)
-- **Config change** (`mass pkg cfg`) → Requires manual deploy with message:
-  ```bash
-  mass pkg cfg example-test-mydb --params=/tmp/params.json
-  mass pkg deploy example-test-mydb -m "Enable deletion protection, increase storage to 100GB"
-  ```
-
-**Important:**
-- User may need to provide a project/environment to work in
-- Credential assignment to packages may require manual setup in the UI (no CLI command yet)
-- Ask user to set up credentials in the environment before deploying
-
-**Testing Workflow:**
-1. User sets up: project, environment, assigns credentials
-2. Claude creates packages, configures them, sets to development channel
-3. Claude deploys, checks logs and artifact output to verify correctness
-
-**Deploy Comments for Iteration:**
-When iterating through bundle changes (e.g., fixing Checkov findings), always include a deploy message with `-m` to help operators track what changed:
-
-```bash
-# Good practice - describe what this deploy tests/changes
-mass pkg deploy example-test-mydb -m "Fix CKV2_AWS_69: Enable rds.force_ssl for encryption in transit"
-mass pkg deploy example-test-mydb -m "Add deletion_protection param, enable enhanced monitoring"
-
-# Avoid - no context for what changed
-mass pkg deploy example-test-mydb
-```
-
-This creates an audit trail in Massdriver showing what each deployment intended to accomplish.
-
-### Post-Deployment: Compliance Review
-
-For Checkov remediation workflow after deployment, see [references/compliance.md](./references/compliance.md).
+---
 
 ## Common Mistakes & Fixes
 
 | Mistake | Fix |
 |---------|-----|
-| **Coupled lifecycles** (VPC in database bundle) | Foundational resources become connections, not inline resources. Check `mass bundle list` and `mass def list` for existing artifacts to use. |
-| **Provider auth fails** (Cannot assume role) | Provider block must use ALL fields from credential artifact schema. Check `mass def get <credential>` and include optional fields like `external_id` using `try()`. |
-| "variable not declared" | Run `mass bundle build` to generate `_massdriver_variables.tf` |
-| Param and connection have same name | Rename one - they share Terraform namespace |
-| artifacts.tf field doesn't match | Ensure `field = "X"` matches `artifacts.properties.X` in massdriver.yaml |
-| $ref not found | Verify artifact definition exists with `mass def get <name>` |
-| Edited generated file, changes lost | Never edit `schema-*.json` or `_massdriver_variables.tf` |
-| Missing massdriver provider | Add to `required_providers` block |
-| **Publishing stable during development** | NEVER run `mass bundle publish` without `--development` during testing. Stable releases burn semver and can't be unpublished. Use `--development` throughout, only publish stable when production-ready. |
-| **Manual deploy after each publish** | Packages on development channel auto-upgrade and auto-deploy. After initial deploy, just publish - no need to run `mass pkg deploy` again. |
-| **local-exec with Python/dependencies** | Massdriver's provisioner has limited runtime - no sklearn, numpy, pip packages. Pre-build artifacts and include them in the bundle, then use `aws_s3_object` or similar to upload. |
-| **Inline checkov:skip comments** | Inline `#checkov:skip=` comments don't work in Massdriver's Checkov version. Use `src/.checkov.yml` file instead. |
+| Coupled lifecycles (VPC in database bundle) | Use connections for foundational resources |
+| Provider auth fails | Include ALL fields from credential artifact, use `try()` for optional fields |
+| "variable not declared" | Run `mass bundle build` |
+| Param/connection name collision | Rename one |
+| artifacts.tf field mismatch | Ensure `field = "X"` matches `artifacts.properties.X` |
+| Publishing stable during development | Use `--development` flag always until production-ready |
+| Manual deploy after publish | Packages on development channel auto-deploy |
+| Inline checkov:skip comments | Use `src/.checkov.yml` file instead |
+
+---
 
 ## Commands Reference
 
 ```bash
-# Single bundle operations
-cd bundles/my-bundle
-mass bundle build           # Generate schemas + _massdriver_variables.tf
-tofu init && tofu validate  # Validate IaC
-mass bundle publish         # Publish to Massdriver
+# Discovery
+mass bundle list              # List available bundles
+mass def list                 # List artifact definitions
+mass def get <name>           # Get artifact definition schema
 
-# Repository-wide operations
-make build-bundles          # Build all bundles
-make validate-bundles       # Validate all bundles
-make publish-bundles        # Publish all bundles
-make publish-artifact-definitions  # Publish artifact definitions
-make publish-platforms      # Publish platform definitions
-make all                    # Clean, build, validate, publish everything
+# Build
+mass bundle build             # Generate schemas + variables
+tofu init && tofu validate    # Validate IaC
+
+# Publish Bundles (NEVER without --development unless human authorized)
+mass bundle publish --development
+
+# Publish Artifact Definitions (careful: these are live immediately)
+mass definition publish artifact-definitions/my-artifact/massdriver.yaml
+mass definition publish platforms/my-cloud/massdriver.yaml
+
+# Package Management
+mass pkg create <slug> --bundle <bundle>
+mass pkg version <slug>@latest --release-channel development
+mass pkg cfg <slug> --params=/tmp/params.json
+mass pkg deploy <slug> -m "Description of changes"
+
+# Debugging
+mass logs <deployment-id>
+mass artifact get <artifact-name>
+
+# Project/Environment
+mass project create <slug> --name "<Name>"
+mass env create <slug> --name "<Name>"
 ```
+
+---
 
 ## See Also
 
-- [PATTERNS.md](./PATTERNS.md) - Complete examples of bundles and artifact definitions
-- [references/alarms.md](./references/alarms.md) - Adding monitoring alarms (AWS/GCP/Azure)
-- [references/compliance.md](./references/compliance.md) - Post-deployment Checkov remediation
-- [snippets/](./snippets/) - Copy-paste templates for common files
-
-## Extensibility
-
-Customers can customize patterns for their organization by adding to their project's `CLAUDE.md`:
-
-```markdown
-## Our Bundle Conventions
-
-- All bundles must include `cost_center` param
-- Use `acme-` prefix for bundle names
-- Required tags: team, environment, compliance-scope
-```
-
-The skill will incorporate these org-specific patterns when working in that repository.
+- [PATTERNS.md](./PATTERNS.md) - Complete examples
+- [references/alarms.md](./references/alarms.md) - Monitoring alarms
+- [references/compliance.md](./references/compliance.md) - Checkov remediation
+- [snippets/](./snippets/) - Copy-paste templates

@@ -364,7 +364,69 @@ ui:
 
 ## Artifact Definition Patterns
 
-Artifact definitions support the same capabilities as platforms: `schema`, `ui` (with `environmentDefaultGroup`), `instructions/`, and `exports/`. The examples below show common patterns.
+Artifact definitions live in `artifact-definitions/<name>/massdriver.yaml`. They define schema contracts for data passed between bundles.
+
+**Directory structure:**
+```
+artifact-definitions/
+└── my-artifact/
+    ├── massdriver.yaml       # Required: schema + UI config
+    ├── instructions/         # Optional: markdown walkthroughs
+    │   └── Getting Started.md
+    └── exports/              # Optional: downloadable files
+        └── config.json
+```
+
+**Available fields:**
+- `name` - Artifact identifier (required)
+- `label` - Display name (required)
+- `icon` - URL to icon image
+- `schema` - JSON Schema for artifact data (required)
+- `ui.connectionOrientation` - `environmentDefault` or `linkable`
+- `ui.environmentDefaultGroup` - Group name for env defaults (e.g., `credentials`, `networks`)
+- `ui.instructions` - Array of instruction file references
+- `exports` - Array of downloadable file references
+
+### Platform/Credential Artifact (Full Example)
+
+**platforms/aws/massdriver.yaml** (or artifact-definitions/aws-iam-role/massdriver.yaml):
+```yaml
+name: aws-iam-role
+label: AWS IAM Role
+icon: https://example.com/aws-icon.png
+
+ui:
+  connectionOrientation: environmentDefault
+  environmentDefaultGroup: credentials
+  instructions:
+    - label: AWS CLI
+      path: ./instructions/AWS CLI.md
+    - label: AWS Console
+      path: ./instructions/AWS Console.md
+
+exports: []
+
+schema:
+  title: AWS IAM Role
+  description: AWS IAM role credentials for authentication and authorization.
+  type: object
+  required:
+    - arn
+  properties:
+    arn:
+      title: IAM Role ARN
+      description: Amazon Resource Name (ARN) of the IAM role to assume.
+      type: string
+      pattern: ^arn:aws:[a-zA-Z0-9._-]*:[a-zA-Z0-9._-]*:(?:[0-9]{12})?:[a-zA-Z0-9/:._-]+$
+      message:
+        pattern: "Must be a valid AWS ARN."
+      examples:
+        - "arn:aws:iam::123456789012:role/MyRole"
+    external_id:
+      title: External ID
+      description: Optional external ID for additional security when assuming the role.
+      type: string
+```
 
 ### Database Artifact (Credentials + Policies)
 
@@ -498,40 +560,71 @@ schema:
         type: string
 ```
 
-### Artifact with Instructions and Exports
+### Artifact with Exports (Downloadable Configs)
 
-Artifact definitions can include instructions and exports just like platforms:
+Exports let users download config files with artifact data interpolated via mustache templating. Common use cases: kubeconfig, VPN certs, CLI configs.
 
-**artifact-definitions/external-api/massdriver.yaml**:
+**artifact-definitions/kubernetes-cluster/massdriver.yaml**:
 ```yaml
-name: external-api
-label: External API
+name: kubernetes-cluster
+label: Kubernetes Cluster
 
 ui:
-  environmentDefaultGroup: integrations
+  environmentDefaultGroup: clusters
   instructions:
-    - label: Getting Your API Key
-      path: ./instructions/API Key.md
+    - label: kubectl Setup
+      path: ./instructions/kubectl.md
 
 exports:
-  - label: OpenAPI Spec
-    path: ./exports/openapi.json
+  - label: Kubeconfig
+    path: ./exports/kubeconfig.yaml
 
 schema:
-  title: External API Configuration
+  title: Kubernetes Cluster
   type: object
   required:
-    - base_url
-    - api_key
+    - cluster_endpoint
+    - cluster_ca_certificate
+    - cluster_token
   properties:
-    base_url:
-      title: Base URL
+    cluster_endpoint:
+      title: API Server Endpoint
       type: string
-    api_key:
+    cluster_ca_certificate:
+      title: CA Certificate
+      type: string
       $md.sensitive: true
-      title: API Key
+    cluster_token:
+      title: Service Account Token
+      type: string
+      $md.sensitive: true
+    cluster_name:
+      title: Cluster Name
       type: string
 ```
+
+**artifact-definitions/kubernetes-cluster/exports/kubeconfig.yaml**:
+```yaml
+apiVersion: v1
+kind: Config
+clusters:
+  - name: {{artifact.cluster_name}}
+    cluster:
+      server: {{artifact.cluster_endpoint}}
+      certificate-authority-data: {{artifact.cluster_ca_certificate}}
+contexts:
+  - name: {{artifact.cluster_name}}
+    context:
+      cluster: {{artifact.cluster_name}}
+      user: {{artifact.cluster_name}}-user
+current-context: {{artifact.cluster_name}}
+users:
+  - name: {{artifact.cluster_name}}-user
+    user:
+      token: {{artifact.cluster_token}}
+```
+
+Export templates use `{{artifact.<field>}}` for interpolation. When users click "Download Kubeconfig" in the UI, they get the file with their actual cluster values.
 
 ---
 

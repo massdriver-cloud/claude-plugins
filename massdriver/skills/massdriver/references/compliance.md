@@ -78,6 +78,19 @@ mass pkg deploy <package> -m "Fix CKV2_AWS_69: Enable SSL enforcement"
 | **LOW** | Optimization or nice-to-have enhancement | VPC endpoints, cost optimization |
 | **IGNORE** | Intentional design decision or not applicable | Public IPs on public subnets, Multi-AZ disabled for dev |
 
+## Skip vs. Halt Strategy
+
+**Use skip-check for:** Architectural decisions that are intentionally permanent (e.g., using AWS-managed encryption instead of CMK). These checks will never pass and provide no value.
+
+**Let checks fail (rely on halt_on_failure) for:** User-configurable security settings (e.g., PITR, deletion protection, encryption toggles). In dev environments:
+- Failures appear as warnings in logs
+- Developers see that their config won't pass in prod
+- This provides valuable security education
+
+In prod, `halt_on_failure: true` stops deployment until the config is compliant.
+
+**Do NOT skip checks** just because a param makes them optional. The warning visibility in dev is valuable feedback that nudges developers toward secure defaults.
+
 ## Common Checkov Findings by Category
 
 | Category | Typical Findings | Typical Fix |
