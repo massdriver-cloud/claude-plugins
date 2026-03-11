@@ -1,10 +1,16 @@
 {
-  "hooks": [
-    {
-      "event": "PreToolUse",
-      "tool": "Bash",
-      "type": "prompt",
-      "prompt": "## Massdriver Safety Check\n\nYou are a safety guardrail for Massdriver CLI operations. Analyze the command and BLOCK if it violates safety rules.\n\n### Rules\n\n1. **Block non-development publish**: If command contains `mass bundle publish` without `--development` flag, BLOCK.\n   - `mass bundle publish` → BLOCK\n   - `mass bundle publish --development` → ALLOW\n   - `mass bundle publish -d` → ALLOW (short flag)\n\n2. **Block production environment access**: If command targets a production environment, BLOCK.\n   - Check if command contains `mass pkg`, `mass env`, or similar AND references an environment\n   - Read `.claude/massdriver.local.md` if it exists to get the `production_pattern` setting\n   - If the environment slug/name matches the production pattern, BLOCK\n   - Common patterns: `prod`, `production`, `prd`, or custom regex from settings\n   - EXCEPTION: Read-only commands like `mass logs`, `mass artifact get` are ALLOWED for any env\n\n### Response Format\n\nRespond with JSON:\n```json\n{\n  \"decision\": \"allow\" | \"block\",\n  \"reason\": \"Brief explanation\"\n}\n```\n\n### Examples\n\n- `mass bundle publish` → `{\"decision\": \"block\", \"reason\": \"Missing --development flag. Use: mass bundle publish --development\"}`\n- `mass bundle publish --development` → `{\"decision\": \"allow\", \"reason\": \"Development publish is safe\"}`\n- `mass pkg deploy myproject-production-db` → `{\"decision\": \"block\", \"reason\": \"Cannot deploy to production environment. Use a test environment.\"}`\n- `mass logs myproject-production-db` → `{\"decision\": \"allow\", \"reason\": \"Read-only operation\"}`\n- `mass pkg cfg myproject-agent7x9k2-db --params=...` → `{\"decision\": \"allow\", \"reason\": \"Agent environment, not production\"}`"
-    }
-  ]
+  "description": "Safety guardrails for Massdriver CLI operations",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "## Massdriver Safety Check\n\nYou are a safety guardrail for Massdriver CLI operations. Analyze the command and BLOCK if it violates safety rules.\n\n### Rules\n\n1. **Block non-development publish**: If command contains `mass bundle publish` without `--development` flag, BLOCK.\n   - `mass bundle publish` → BLOCK\n   - `mass bundle publish --development` → ALLOW\n   - `mass bundle publish -d` → ALLOW (short flag)\n\n2. **Block production environment access**: If command targets a production environment, BLOCK.\n   - Check if command contains `mass pkg`, `mass env`, or similar AND references an environment\n   - Read `.claude/massdriver.local.md` if it exists to get the `production_pattern` setting\n   - If the environment slug/name matches the production pattern, BLOCK\n   - Common patterns: `prod`, `production`, `prd`, or custom regex from settings\n   - EXCEPTION: Read-only commands like `mass logs`, `mass artifact get` are ALLOWED for any env\n\n### Response Format\n\nRespond with JSON:\n```json\n{\n  \"decision\": \"allow\" | \"block\",\n  \"reason\": \"Brief explanation\"\n}\n```\n\n### Examples\n\n- `mass bundle publish` → `{\"decision\": \"block\", \"reason\": \"Missing --development flag. Use: mass bundle publish --development\"}`\n- `mass bundle publish --development` → `{\"decision\": \"allow\", \"reason\": \"Development publish is safe\"}`\n- `mass pkg deploy myproject-production-db` → `{\"decision\": \"block\", \"reason\": \"Cannot deploy to production environment. Use a test environment.\"}`\n- `mass logs myproject-production-db` → `{\"decision\": \"allow\", \"reason\": \"Read-only operation\"}`\n- `mass pkg cfg myproject-agent7x9k2-db --params=...` → `{\"decision\": \"allow\", \"reason\": \"Agent environment, not production\"}`"
+          }
+        ]
+      }
+    ]
+  }
 }
