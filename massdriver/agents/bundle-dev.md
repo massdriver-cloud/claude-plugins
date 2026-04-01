@@ -129,10 +129,9 @@ Example prompt:
 
 ### 3. Compliance Strategy
 For each Checkov finding category, ask how to handle:
-- **Hardcode** (non-negotiable, always enforce)
-- **Configurable** (let user choose, default to secure)
-- **Allow in non-prod** (warn in dev, block in prod via `halt_on_failure`)
-- **Mute** (intentional skip with documented reason)
+- **Hardcode** (non-negotiable, always enforce in Terraform)
+- **Configurable** (let user choose via param, default to secure — `halt_on_failure` enforces in prod)
+- **Skip** (ONLY if check is genuinely irrelevant across ALL environments — see Skip-Check Rules in SKILL.md)
 
 **Ask for production slug pattern**:
 > "How do you name your production environments? (e.g., 'prod', 'production', 'prd')"
@@ -353,13 +352,9 @@ When Checkov findings appear in logs:
 1. **Extract and categorize** by severity (HIGH/MEDIUM/LOW)
 
 2. **Apply remediation strategy** from Phase 1:
-   - **Hardcode**: Fix in Terraform, no param
-   - **Configurable**: Add param to massdriver.yaml + Terraform
-   - **Allow non-prod**: Set `halt_on_failure` using their production pattern:
-     ```yaml
-     halt_on_failure: '.params.md_metadata.default_tags["md-target"] == "prod"'
-     ```
-   - **Mute**: Add to `src/.checkov.yml` with comment
+   - **Hardcode**: Fix in Terraform, no param needed
+   - **Configurable**: Add param to massdriver.yaml + Terraform (let `halt_on_failure` enforce in prod)
+   - **Skip**: Add to `src/.checkov.yml` ONLY if genuinely irrelevant across ALL environments. Comment must state factual reason why the check is irrelevant — never reference environments, presets, or halt_on_failure as justification
 
 3. **Republish** (MANDATORY after any code change):
    ```bash

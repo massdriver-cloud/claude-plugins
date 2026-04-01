@@ -35,17 +35,19 @@ Security improvements identified by Checkov.
 |----------|--------|
 | **HIGH** | Attempt to fix by hardcoding secure defaults or exposing as params |
 | **MEDIUM** | Attempt to fix if straightforward; otherwise document why deferred |
-| **LOW** | Add to `.checkov.yml` skip list with comment explaining why |
-| **IGNORE** | Add to `.checkov.yml` skip list - intentional design decisions |
+| **LOW** | Document for future improvement; do NOT skip unless truly irrelevant |
+| **SKIP** | Add to `.checkov.yml` ONLY if check is irrelevant across ALL environments (see Skip-Check Rules) |
 
 **4. For issues to skip**, create/update `src/.checkov.yml`:
 ```yaml
 skip-check:
-  # LOW: Security group egress - RDS requires outbound for AWS API calls
+  # Security group egress required for AWS API connectivity
   - CKV_AWS_382
-  # LOW: SNS encryption - alarm metadata not sensitive
-  - CKV_AWS_26
+  # Aurora-only check, not applicable to standard RDS instances
+  - CKV_AWS_162
 ```
+
+> **CRITICAL**: Only skip checks that are genuinely irrelevant across ALL environments including production. A skipped check is invisible to `halt_on_failure`. See the Skip-Check Rules in SKILL.md for the full policy.
 
 **5. For issues to fix**, update the Terraform code:
 ```hcl
@@ -75,21 +77,30 @@ mass pkg deploy <package> -m "Fix CKV2_AWS_69: Enable SSL enforcement"
 |----------|----------|----------|
 | **HIGH** | Security vulnerability, data exposure risk, or compliance requirement | Encryption disabled, public exposure, missing auth |
 | **MEDIUM** | Best practice, observability, or operational improvement | Logging disabled, no monitoring, missing tags |
-| **LOW** | Optimization or nice-to-have enhancement | VPC endpoints, cost optimization |
-| **IGNORE** | Intentional design decision or not applicable | Public IPs on public subnets, Multi-AZ disabled for dev |
+| **LOW** | Optimization or nice-to-have; do not skip unless truly irrelevant | VPC endpoints, cost optimization |
+| **SKIP** | Check is irrelevant across ALL environments (not applicable to resource type, by-design infrastructure, or out-of-scope dependency) | Aurora-only checks on standard RDS, SG egress for AWS API connectivity |
 
-## Skip vs. Halt Strategy
+## Skip-Check Rules (STRICT)
 
-**Use skip-check for:** Architectural decisions that are intentionally permanent (e.g., using AWS-managed encryption instead of CMK). These checks will never pass and provide no value.
+A skipped check is skipped EVERYWHERE — `halt_on_failure` does NOTHING for skipped checks.
 
-**Let checks fail (rely on halt_on_failure) for:** User-configurable security settings (e.g., PITR, deletion protection, encryption toggles). In dev environments:
-- Failures appear as warnings in logs
-- Developers see that their config won't pass in prod
-- This provides valuable security education
+**ONLY skip checks that are genuinely irrelevant across ALL environments including production.**
 
-In prod, `halt_on_failure: true` stops deployment until the config is compliant.
+**Valid reasons to skip:**
+- Check is not applicable to the resource type (e.g., Aurora-only checks on standard RDS)
+- Check targets infrastructure that is by design (e.g., SG egress for AWS service connectivity, public IPs on public subnets)
+- Check requires infrastructure outside the bundle's scope (e.g., Lambda rotator for secret rotation)
 
-**Do NOT skip checks** just because a param makes them optional. The warning visibility in dev is valuable feedback that nudges developers toward secure defaults.
+**NEVER skip a check for something configurable via params** (e.g., multi-AZ, deletion protection, enhanced monitoring, TLS, automatic failover). If a user can toggle it, let checkov flag it naturally. `halt_on_failure` enforces compliance in production while giving users freedom in non-prod.
+
+**Invalid reasons to skip:**
+- "Dev preset has it disabled for cost savings" — NO, the bundle runs in prod too
+- "halt_on_failure enforces this in production" — NO, skipped checks are invisible to halt_on_failure
+- "This bundle targets dev environments" — NO, all bundles eventually run in production
+
+**Comments in `.checkov.yml`** must be factual about WHY the check is irrelevant. Never reference environments, presets, dev/prod distinctions, or halt_on_failure as justification.
+
+**When in doubt, DO NOT skip.** Let the check fail, and let `halt_on_failure` do its job.
 
 ## Common Checkov Findings by Category
 
@@ -98,7 +109,7 @@ In prod, `halt_on_failure: true` stops deployment until the config is compliant.
 | **Encryption** | KMS keys, encryption at rest, TLS | Enable encryption, add parameter for SSL |
 | **Logging** | CloudWatch logs, flow logs, audit trails | Enable log exports, add log group |
 | **Access Control** | IAM auth, security groups, public access | Restrict ingress, disable public access |
-| **Backup/DR** | Deletion protection, snapshots, Multi-AZ | Add params for user control |
+| **Backup/DR** | Deletion protection, snapshots, Multi-AZ | Add params for user control (let halt_on_failure enforce in prod) |
 | **Monitoring** | Enhanced monitoring, Performance Insights | Enable with instance class checks |
 
-Always document the rationale for IGNORE decisions - future maintainers need to understand why a security recommendation was intentionally skipped.
+Comments in `.checkov.yml` must state factual reasons why a check is irrelevant — never reference environments or halt_on_failure as justification for skipping.
