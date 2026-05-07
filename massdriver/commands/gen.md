@@ -54,7 +54,7 @@ bundles/<bundle-name>/
 ├── operator.md         # Runbook template
 └── src/
     ├── main.tf         # Primary Terraform code
-    ├── artifacts.tf    # massdriver_artifact resources
+    ├── artifacts.tf    # massdriver_resource resources
     └── .checkov.yml    # Checkov skip rules (if any)
 ```
 
@@ -84,6 +84,6 @@ Fix any issues before finishing.
 Tell the user:
 - Where the bundle was created
 - How to publish it: `mass bundle publish --development`
-- For new resource types, publish them first: `mass resource-type publish artifact-definitions/<name>/massdriver.yaml` (no `--development` flag, goes live immediately)
+- For new resource types, publish them first: `mass resource-type publish resource-type/<name>/massdriver.yaml` (no `--development` flag, goes live immediately)
 - To deploy in v2: add the bundle as a component once at the project level (`mass component add <project> <bundle> --id <comp-id>`), then per environment set `mass instance version <project>-<env>-<comp>@latest --release-channel development` and `mass instance deploy <slug> --params=... --message "..." --follow`
 - Suggest using `/massdriver:develop` if they want the full test loop

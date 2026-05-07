@@ -1,6 +1,6 @@
 ---
 name: massdriver
-description: Develop and test Massdriver v2 infrastructure bundles. Operates in three modes - FULL (interactive deploy loop via /massdriver:develop), UPGRADE TESTING (day 2 validation via /massdriver:test-upgrade), or BUILD-ONLY (/massdriver:gen for local scaffolding). Auto-activates when working with massdriver.yaml, bundles/, artifact-definitions/, platforms/, or projects/ directories. Use when creating bundles, modifying IaC, testing deployments, validating upgrades, or fixing compliance findings.
+description: Develop and test Massdriver v2 infrastructure bundles. Operates in three modes - FULL (interactive deploy loop via /massdriver:develop), UPGRADE TESTING (day 2 validation via /massdriver:test-upgrade), or BUILD-ONLY (/massdriver:gen for local scaffolding). Auto-activates when working with massdriver.yaml, bundles/, resource-type/ (or legacy artifact-definitions/), platforms/, or projects/ directories. Use when creating bundles, modifying IaC, testing deployments, validating upgrades, or fixing compliance findings.
 ---
 
 # Massdriver Bundle Development (v2)
@@ -202,15 +202,15 @@ Understand compliance requirements:
 
 2. **Check/create resource types:**
    - Run `mass resource-type list` to see existing resource types
-   - If the bundle needs a new resource type, create `artifact-definitions/<name>/massdriver.yaml` (or `platforms/<name>/massdriver.yaml` for credential types — purely organizational)
+   - If the bundle needs a new resource type, create `resource-type/<name>/massdriver.yaml` (or `platforms/<name>/massdriver.yaml` for credential types — purely organizational)
    - **Publish immediately** (with user approval):
      ```bash
-     mass resource-type publish artifact-definitions/<name>/massdriver.yaml
+     mass resource-type publish resource-type/<name>/massdriver.yaml
      ```
    - Resource types go live immediately — there is NO `--development` flag.
    - **Warning:** Published resource types are live immediately — avoid breaking changes.
 
-3. **Create massdriver.yaml** with params, connections, artifacts, UI ordering. Note: in the bundle YAML the output section is still called `artifacts:` (and the Terraform resource is still `massdriver_artifact`). At runtime these become "resources" — that's just naming.
+3. **Create massdriver.yaml** with params, connections, artifacts, UI ordering. Naming note: the bundle YAML keeps the `artifacts:` section key in v2 — that hasn't been renamed. At deploy time, what you publish via `massdriver_resource` HCL resources surface as runtime "resources" managed by `mass resource`.
 
 4. **Create Terraform code** — fetch the credential resource type FIRST:
    ```bash
@@ -361,7 +361,7 @@ mass server -p 8080 --browser
 
 **Bundle**: Reusable IaC module with declarative configuration (`massdriver.yaml` + `src/` code). Published to an OCI repository.
 
-**Resource Type** (formerly "artifact definition"): Schema contract defining data passed between bundles. Lives in `artifact-definitions/<name>/massdriver.yaml`. Supports:
+**Resource Type** (formerly "artifact definition"): Schema contract defining data passed between bundles. Lives in `resource-type/<name>/massdriver.yaml`. Supports:
 - **Schema** → Generates UI form for manual resource creation
 - **Instructions** (`instructions/`) → Markdown walkthroughs for obtaining values
 - **Exports** (`exports/`) → Downloadable files (e.g., kubeconfig)
@@ -370,7 +370,7 @@ mass server -p 8080 --browser
 
 **Platform**: A resource type for cloud credentials. Lives in `platforms/<name>/massdriver.yaml`. Identical structure to other resource types — separate directory for organization only.
 
-**Resource** (formerly "artifact"): An instance of a resource type containing actual data (credentials, connection strings). Created by bundles (still via the `massdriver_artifact` Terraform resource — the provider hasn't been renamed) or by users (UI form / `mass resource create`).
+**Resource** (formerly "artifact"): An instance of a resource type containing actual data (credentials, connection strings). Created by bundles via the `massdriver_resource` Terraform resource (renamed from `massdriver_artifact` in v2), or by users (UI form / `mass resource create`).
 
 **Connection**: How instances receive resources at deploy time. Authored in `massdriver.yaml`, wired in the project blueprint via `mass component link`, materialized as a connection in each environment, flows to Terraform as a variable at deploy.
 
@@ -473,7 +473,7 @@ connections:
 connections:
   properties:
     network:
-      $ref: network  # References artifact-definitions/network/
+      $ref: network  # References resource-type/network/
 ```
 
 ### 4. artifacts.tf Must Match massdriver.yaml
@@ -485,7 +485,7 @@ artifacts:
 ```
 ```hcl
 # src/artifacts.tf
-resource "massdriver_artifact" "database" {
+resource "massdriver_resource" "database" {
   field = "database"  # Must match
 }
 ```
@@ -514,7 +514,7 @@ Always `mass resource-type get <platform-name>` before writing a provider block.
 | `massdriver.yaml` | Source of truth - params, connections, artifacts, UI | Yes |
 | `README.md` | Bundle documentation (displayed in UI) | Yes |
 | `src/main.tf` | IaC code | Yes |
-| `src/artifacts.tf` | massdriver_artifact resources | Yes |
+| `src/artifacts.tf` | massdriver_resource resources | Yes |
 | `src/.checkov.yml` | Checkov skip rules | Yes |
 | `operator.md` | Runbook with mustache templating | Yes |
 | `schema-*.json` | Generated schemas | **Never** |
@@ -550,7 +550,7 @@ var.database.auth.hostname
 ### Creating Artifacts
 
 ```hcl
-resource "massdriver_artifact" "database" {
+resource "massdriver_resource" "database" {
   field = "database"
   name  = "PostgreSQL ${var.md_metadata.name_prefix}"
 
@@ -672,7 +672,7 @@ Before publishing:
 - [ ] `mass bundle build` succeeds
 - [ ] `mass bundle lint` is clean (or run `mass bundle publish --development --fail-warnings`)
 - [ ] No param/connection name conflicts
-- [ ] Every artifact has matching `massdriver_artifact` resource
+- [ ] Every artifact has matching `massdriver_resource` resource
 - [ ] `tofu init && tofu validate` passes
 - [ ] Artifact JSON matches the resource type's schema
 - [ ] Required providers include `massdriver-cloud/massdriver`
@@ -709,7 +709,7 @@ Before publishing:
 | What Changed | Command | Notes |
 |--------------|---------|-------|
 | Bundle code | `mass bundle publish --development` | Always use `--development` (or `-d`) |
-| Resource type | `mass resource-type publish artifact-definitions/<name>/massdriver.yaml` | Goes live immediately, no `--development` flag, get user approval |
+| Resource type | `mass resource-type publish resource-type/<name>/massdriver.yaml` | Goes live immediately, no `--development` flag, get user approval |
 | Platform definition | `mass resource-type publish platforms/<name>/massdriver.yaml` | Same as resource types — live immediately |
 
 **After ANY change, you MUST publish.** The platform has no access to your local filesystem — changes don't exist until you publish.
@@ -742,7 +742,7 @@ tofu init && tofu validate               # Validate IaC
 
 # Publish (NEVER stable without explicit human authorization)
 mass bundle publish --development
-mass resource-type publish artifact-definitions/my-type/massdriver.yaml
+mass resource-type publish resource-type/my-type/massdriver.yaml
 mass resource-type publish platforms/my-cloud/massdriver.yaml
 
 # Project & Environment

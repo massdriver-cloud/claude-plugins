@@ -87,7 +87,7 @@ This plugin helps platform engineers create and test Massdriver v2 bundles — r
 ## When It Activates
 
 The plugin auto-activates when:
-- Working in `bundles/`, `artifact-definitions/`, `platforms/`, or `projects/` directories
+- Working in `bundles/`, `resource-type/` (or legacy `artifact-definitions/`), `platforms/`, or `projects/` directories
 - Editing `massdriver.yaml` files
 - Asking about bundles, resource types, components, instances, connections, or Massdriver patterns
 - Requesting to create, develop, or test bundles

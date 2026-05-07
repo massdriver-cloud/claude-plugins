@@ -2,7 +2,11 @@
 
 Complete examples for bundles, resource types, and platforms. Use these for copy-paste and learning.
 
-> **Naming note:** v2 calls schema contracts **resource types** (formerly "artifact definitions"). The repository directory is still `artifact-definitions/` — that's a filesystem convention that hasn't been renamed yet. In the bundle YAML, the output section is still called `artifacts:` and the Terraform resource is still `massdriver_artifact`. Where this file says "artifact definition", read "resource type".
+> **Naming note (v2):**
+> - Schema contracts are **resource types** (formerly "artifact definitions"), and they live in `resource-type/<name>/massdriver.yaml`. Some existing repositories (e.g. the catalog) still use the legacy `artifact-definitions/` directory and haven't been refactored — both work; new bundles should use `resource-type/`.
+> - The Terraform provider's HCL resource is now `massdriver_resource` (formerly `massdriver_artifact`).
+> - The bundle YAML keeps the section keys `params:`, `connections:`, and `artifacts:` — those are unchanged.
+> - The CLI calls them resources at runtime (`mass resource get|download|create`). The "artifact" you write in HCL becomes a "resource" at deploy time.
 
 ## Complete Bundle Examples
 
@@ -132,7 +136,7 @@ resource "aws_db_instance" "main" {
 
 **src/artifacts.tf**:
 ```hcl
-resource "massdriver_artifact" "database" {
+resource "massdriver_resource" "database" {
   field = "database"
   name  = "PostgreSQL ${var.md_metadata.name_prefix}"
 
@@ -366,11 +370,11 @@ ui:
 
 ## Resource Type Patterns (a.k.a. Artifact Definitions)
 
-Resource types live in `artifact-definitions/<name>/massdriver.yaml` (directory name is legacy; the contracts themselves are v2 resource types). They define schema contracts for data passed between bundles.
+Resource types live in `resource-type/<name>/massdriver.yaml` (legacy repos may use `artifact-definitions/` — both are accepted). They define schema contracts for data passed between bundles.
 
 **Directory structure:**
 ```
-artifact-definitions/
+resource-type/
 └── my-artifact/
     ├── massdriver.yaml       # Required: schema + UI config
     ├── instructions/         # Optional: markdown walkthroughs
@@ -391,7 +395,7 @@ artifact-definitions/
 
 ### Platform/Credential Artifact (Full Example)
 
-**platforms/aws/massdriver.yaml** (or artifact-definitions/aws-iam-role/massdriver.yaml):
+**platforms/aws/massdriver.yaml** (or resource-type/aws-iam-role/massdriver.yaml):
 ```yaml
 name: aws-iam-role
 label: AWS IAM Role
@@ -432,7 +436,7 @@ schema:
 
 ### Database Artifact (Credentials + Policies)
 
-**artifact-definitions/postgres/massdriver.yaml**:
+**resource-type/postgres/massdriver.yaml**:
 ```yaml
 name: postgres
 label: PostgreSQL
@@ -494,7 +498,7 @@ schema:
 
 ### Network Artifact (Environment Default)
 
-**artifact-definitions/network/massdriver.yaml**:
+**resource-type/network/massdriver.yaml**:
 ```yaml
 name: network
 label: Network
@@ -538,7 +542,7 @@ schema:
 
 ### Minimal Artifact
 
-**artifact-definitions/application/massdriver.yaml**:
+**resource-type/application/massdriver.yaml**:
 ```yaml
 name: application
 label: Application
@@ -566,7 +570,7 @@ schema:
 
 Exports let users download config files with artifact data interpolated via mustache templating. Common use cases: kubeconfig, VPN certs, CLI configs.
 
-**artifact-definitions/kubernetes-cluster/massdriver.yaml**:
+**resource-type/kubernetes-cluster/massdriver.yaml**:
 ```yaml
 name: kubernetes-cluster
 label: Kubernetes Cluster
@@ -605,7 +609,7 @@ schema:
       type: string
 ```
 
-**artifact-definitions/kubernetes-cluster/exports/kubeconfig.yaml**:
+**resource-type/kubernetes-cluster/exports/kubeconfig.yaml**:
 ```yaml
 apiVersion: v1
 kind: Config
@@ -632,7 +636,7 @@ Export templates use `{{artifact.<field>}}` for interpolation. When users click 
 
 ## Platform Definition Pattern
 
-Platforms are resource types for cloud authentication. They're technically identical to other resource types in `artifact-definitions/` — the separate `platforms/` directory is purely organizational to distinguish credential resource types from infrastructure ones.
+Platforms are resource types for cloud authentication. They're technically identical to other resource types in `resource-type/` — the separate `platforms/` directory is purely organizational to distinguish credential resource types from infrastructure ones.
 
 **platforms/aws/massdriver.yaml**:
 ```yaml
@@ -772,7 +776,7 @@ artifacts:
 ```
 ```hcl
 # BAD
-resource "massdriver_artifact" "database" {
+resource "massdriver_resource" "database" {
   field = "database"  # Should be "postgres_db"!
 }
 ```

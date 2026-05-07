@@ -162,7 +162,7 @@ This is needed for the `halt_on_failure` expression in the bundle's steps config
 
 **If user requests a minimal/standalone bundle**, clarify:
 - "Should the bundle use environment defaults (set via UI) with no auth connection?"
-- "Should outputs be Terraform outputs only (no `massdriver_artifact` publishing)?"
+- "Should outputs be Terraform outputs only (no `massdriver_resource` publishing)?"
 - "Or use custom resource types for inputs/outputs?"
 
 ## Phase 2: Bundle Scaffolding
@@ -197,7 +197,7 @@ Based on requirements, create:
 3. **Terraform code** in `src/`:
    - Provider configuration (see **Provider Configuration** below)
    - Resource definitions
-   - `massdriver_artifact` resources matching the artifacts schema (the provider's resource is still `massdriver_artifact` — not renamed yet)
+   - `massdriver_resource` HCL resources matching the YAML's `artifacts:` schema (in v2 the provider's resource was renamed from `massdriver_artifact` to `massdriver_resource`; the bundle YAML key stayed as `artifacts:`)
 
 ### Provider Configuration (CRITICAL)
 
@@ -230,10 +230,10 @@ provider "aws" {
 
 4. **Check / create resource types:**
    - `mass resource-type list` (ignore any `massdriver/` prefixed)
-   - If the bundle needs a new resource type, create `artifact-definitions/<name>/massdriver.yaml`
+   - If the bundle needs a new resource type, create `resource-type/<name>/massdriver.yaml`
    - **Publish new resource types immediately** (with user approval):
      ```bash
-     mass resource-type publish artifact-definitions/<name>/massdriver.yaml
+     mass resource-type publish resource-type/<name>/massdriver.yaml
      ```
    - There is NO `--development` flag for resource types. They go live immediately. Get user approval first.
    - **Warning:** Published resource types are live immediately — avoid breaking changes.
@@ -250,7 +250,7 @@ provider "aws" {
 
 The platform has no access to your local filesystem — changes don't exist until you publish:
 - **Bundle code**: `mass bundle publish --development`
-- **Resource type**: `mass resource-type publish artifact-definitions/<name>/massdriver.yaml` (with user approval)
+- **Resource type**: `mass resource-type publish resource-type/<name>/massdriver.yaml` (with user approval)
 
 Do this EVERY time. No exceptions.
 

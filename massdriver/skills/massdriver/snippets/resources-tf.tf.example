@@ -1,9 +1,9 @@
 # Resource Publishing Template
-# Create one massdriver_artifact resource for each entry in massdriver.yaml's artifacts: section.
-# (The HCL resource is still named `massdriver_artifact` in the provider; at runtime these
-# become "resources" backed by their resource type — v2 terminology.)
+# Create one massdriver_resource for each entry in massdriver.yaml's artifacts: section.
+# (massdriver.yaml keeps the `artifacts:` key in v2; the v2 Terraform provider exposes
+# them as `massdriver_resource` HCL resources.)
 
-resource "massdriver_artifact" "my_resource" {
+resource "massdriver_resource" "my_resource" {
   # field: Must exactly match the property name in massdriver.yaml artifacts section
   # If massdriver.yaml has artifacts.properties.database, use field = "database"
   field = "my_resource"
@@ -12,7 +12,7 @@ resource "massdriver_artifact" "my_resource" {
   name = "My Resource ${var.md_metadata.name_prefix}"
 
   # artifact: JSON payload must match the resource type's schema
-  # If $ref: postgres, structure must match artifact-definitions/postgres.json
+  # If $ref: postgres, structure must match resource-type/postgres/massdriver.yaml
   artifact = jsonencode({
     # Required fields from the resource type
     id = "unique-identifier" # Usually from a resource attribute
@@ -46,13 +46,13 @@ resource "massdriver_artifact" "my_resource" {
 }
 
 # Multiple resources example:
-# resource "massdriver_artifact" "database" {
+# resource "massdriver_resource" "database" {
 #   field    = "database"
 #   name     = "PostgreSQL ${var.md_metadata.name_prefix}"
 #   artifact = jsonencode({ ... })
 # }
 #
-# resource "massdriver_artifact" "cache" {
+# resource "massdriver_resource" "cache" {
 #   field    = "cache"
 #   name     = "Redis ${var.md_metadata.name_prefix}"
 #   artifact = jsonencode({ ... })
