@@ -14,13 +14,15 @@ Start the bundle-dev agent to guide you through creating and testing a Massdrive
 
 ## What This Does
 
-1. **Setup credentials & environment** - Ask for CLI profile and target environment
+1. **Setup credentials, project & environment** - Ask for CLI profile and target project + environment (project + env can both be created via CLI in v2)
 2. **Gather requirements** - Understand your use case, developer UX needs, and compliance strategy
 3. **Scaffold bundle** - Create massdriver.yaml, Terraform code, and supporting files
-4. **Publish & deploy** - `mass bundle publish --development`, add to canvas, set release channel
-5. **Iterate** - Code → publish → watch logs → fix → repeat
-6. **Remediate compliance** - Fix Checkov findings according to your strategy
-7. **Journal results** - Record what was tested in the environment description
+4. **Publish bundle** - `mass bundle publish --development`
+5. **Add to project blueprint** - `mass component add <project> <bundle> --id <comp-id>` (once per project)
+6. **Pin release channel** - `mass instance version <project>-<env>-<comp>@latest --release-channel development`
+7. **Deploy & iterate** - `mass instance deploy <slug> --params=... --message "..." --follow`, then `--patch` for surgical edits
+8. **Remediate compliance** - Fix Checkov findings according to your strategy
+9. **Journal results** - Record what was tested via `mass environment update --description "..."`
 
 ## Usage
 

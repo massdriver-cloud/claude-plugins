@@ -54,7 +54,7 @@ bundles/<bundle-name>/
 ├── operator.md         # Runbook template
 └── src/
     ├── main.tf         # Primary Terraform code
-    ├── artifacts.tf    # massdriver_artifact resources
+    ├── artifacts.tf    # massdriver_resource resources
     └── .checkov.yml    # Checkov skip rules (if any)
 ```
 
@@ -62,9 +62,9 @@ bundles/<bundle-name>/
 
 - **Params**: Focus on 3-5 developer-facing questions, use presets
 - **80/20 rule**: Cover common use cases, don't over-generalize
-- **Connections**: Use existing artifact definitions (`mass def list`, ignore any `massdriver/` prefixed results)
-- **Artifacts**: Match the artifact definition schema exactly
-- **Provider**: `mass def get <platform>` FIRST, then write provider using only those fields — artifact defs and providers are 1:1
+- **Connections**: Use existing resource types (`mass resource-type list`, ignore any `massdriver/` prefixed results)
+- **Artifacts**: Match the resource type's schema exactly (the YAML key is still `artifacts:`; runtime calls them resources)
+- **Provider**: `mass resource-type get <platform>` FIRST, then write provider using only those fields — resource types and providers are 1:1
 - **Compliance**: Default to secure settings, add `halt_on_failure` for prod
 
 ### 4. Local Validation
@@ -73,6 +73,7 @@ Run validation:
 ```bash
 cd bundles/<bundle-name>
 mass bundle build
+mass bundle lint
 cd src && tofu init && tofu validate
 ```
 
@@ -82,7 +83,7 @@ Fix any issues before finishing.
 
 Tell the user:
 - Where the bundle was created
-- How to test it: `mass bundle publish --development`
-- Remind them to set release channel to `latest+dev` or `~X.Y+dev` after creating a package
-- If they need new artifact definitions, publish them first: `mass definition publish artifact-definitions/<name>/massdriver.yaml` (no --development flag, goes live immediately)
+- How to publish it: `mass bundle publish --development`
+- For new resource types, publish them first: `mass resource-type publish resource-type/<name>/massdriver.yaml` (no `--development` flag, goes live immediately)
+- To deploy in v2: add the bundle as a component once at the project level (`mass component add <project> <bundle> --id <comp-id>`), then per environment set `mass instance version <project>-<env>-<comp>@latest --release-channel development` and `mass instance deploy <slug> --params=... --message "..." --follow`
 - Suggest using `/massdriver:develop` if they want the full test loop

@@ -1,430 +1,439 @@
-# GraphQL API Reference
+# GraphQL v2 API Reference
 
-**Note**: Direct GraphQL access via CLI is not currently available. These operations must be performed via the Massdriver web UI or direct API calls with authentication.
+Massdriver v2 exposes a GraphQL API at `https://api.massdriver.cloud/graphql/v2`. The full schema is at `https://api.massdriver.cloud/graphql/v2/schema.graphql`. Most mutations also publish JSON Schema and UI Schema documents at `/graphql/v2/inputs/<mutationName>.json` and `.ui.json` for form generation.
 
-This reference documents the GraphQL schema for understanding Massdriver's data model and what operations are available.
+**Use the CLI first.** Almost everything you need for bundle development is now in `mass`. Use GraphQL only for operations the CLI doesn't cover, or when you need to query several related entities in one round-trip.
 
-## CLI vs UI Operations
+## What's only in GraphQL (no CLI verb)
 
-**Use CLI for:**
-- `mass env create/list` - Environment management
-- `mass pkg create/cfg/deploy/version` - Package management
-- `mass bundle build/publish` - Bundle development
-- `mass logs` - Deployment logs
-- `mass def list/get` - Artifact definitions
+| Operation | Mutation |
+|---|---|
+| Fork an environment from another | `forkEnvironment` |
+| Delete an environment | `deleteEnvironment` |
+| Clone a project's blueprint | `cloneProject` |
+| Copy instance config between instances | `copyInstance` |
+| Manage instance secrets | `setInstanceSecret`, `removeInstanceSecret` |
+| Reset an instance's state | `orphanInstance` |
+| Deployment approval flow | `proposeDeployment`, `approveDeployment`, `rejectDeployment`, `abortDeployment` |
+| Manage remote resource references | `setRemoteReference`, `removeRemoteReference` |
+| Set component canvas position | `setComponentPosition` |
+| Remove env default by id | `removeEnvironmentDefault` |
 
-**Use Web UI for:**
-- Project creation
-- Environment forking
-- Environment description updates
-- Credential/artifact configuration
-- Manifest linking (connecting bundles)
-- Environment defaults setup
+## v1 → v2 cheat sheet
+
+| v1 (legacy) | v2 |
+|---|---|
+| `configurePackage` | folded into `createDeployment(input.params)` — params travel with each deploy |
+| `deployPackage` | `createDeployment(action: PROVISION)` |
+| `decommissionPackage` | `createDeployment(action: DECOMMISSION)` |
+| `decommissionEnvironment` | `deleteEnvironment` (after instances are decommissioned) |
+| `copyPackage` | `copyInstance` |
+| `setPackageVersion` | `updateInstance(input: {version, releaseStrategy})` |
+| `createManifest` | `addComponent` |
+| `linkManifests` | `linkComponents` |
+| `forkEnvironment(copySecrets, copyEnvDefaults, copyRemoteReferences)` | `forkEnvironment(copyEnvironmentDefaults)`; per-instance secrets/refs via `copyInstance` |
+| `package(...)` | `instance(...)` |
+| `repos(...)` | `ociRepos(...)` and `bundles(...)` |
+| `deploymentLogStream(...)` | `deploymentLogs(...)` |
+| `artifactDefinitions(...)` | `resourceTypes(...)` |
+| `PackageStatus` enum | `InstanceStatus` enum |
+| `ReleaseStrategy.DEVELOPMENT/STABLE` | same enum, but the CLI flag is lowercase: `--release-channel development\|stable` |
+
+## Project Operations
+
+### Create / update / clone / delete
+
+```graphql
+mutation {
+  createProject(
+    organizationId: "org-id"
+    input: { id: "ecomm", name: "E-commerce", description: "Storefront stack" }
+  ) {
+    successful
+    result { id name }
+    messages { message }
+  }
+}
+```
+
+```graphql
+mutation {
+  cloneProject(
+    organizationId: "org-id"
+    sourceProjectId: "ecomm"
+    input: { id: "ecomm-fork", name: "E-commerce fork" }
+  ) { successful messages { message } }
+}
+```
+
+`deleteProject(organizationId, id)` — all environments must be deleted first. Check `project.deletable` before calling.
 
 ## Environment Operations
 
-### Create Environment
+### Create
 
 ```graphql
 mutation {
   createEnvironment(
     organizationId: "org-id"
-    projectId: "project-id"
-    name: "My Environment"
-    slug: "myenv"
-    description: "Environment description"
-  ) {
-    successful
-    result {
-      id
-      slug
-      name
-    }
-    messages { message }
-  }
+    projectId: "ecomm"
+    input: { id: "prod", name: "Production" }
+  ) { successful result { id } messages { message } }
 }
 ```
 
-### Fork Environment
+The environment ID is the second segment of every instance slug. With project `ecomm` + env `prod`, instances are `ecomm-prod-<component-id>`.
 
-Clone an environment with optional copying of secrets, env defaults, and remote references.
+### Fork (CLI doesn't have this — GraphQL only)
 
 ```graphql
 mutation {
   forkEnvironment(
     organizationId: "org-id"
-    parentId: "parent-env-id"
+    parentId: "ecomm-prod"
     input: {
-      name: "Forked Environment"
-      slug: "forkedenv"
-      description: "Forked for testing"
-      copySecrets: false
-      copyEnvDefaults: false
-      copyRemoteReferences: false
+      id: "agentx7k2"
+      name: "Upgrade test"
+      description: "Testing upgrade of database to 1.3.0"
+      copyEnvironmentDefaults: true
     }
   ) {
     successful
-    result {
-      id
-      slug
-      parent { slug }
-    }
+    result { id parent { id } }
     messages { message }
   }
 }
 ```
 
-### Update Environment
+Forking starts instances blank (no params copied). Per-instance secrets and remote refs are not copied — use `copyInstance` per instance after forking.
 
-Use to set description (for journaling test results).
+### Update / set defaults
 
 ```graphql
 mutation {
   updateEnvironment(
     organizationId: "org-id"
-    id: "env-id"
-    name: "My Environment"
-    description: "Updated description with test results"
-  ) {
-    successful
-    messages { message }
-  }
+    id: "ecomm-prod"
+    input: { description: "Updated with test results" }
+  ) { successful messages { message } }
 }
 ```
-
-### Decommission Environment
-
-Decommission all packages in an environment.
 
 ```graphql
 mutation {
-  decommissionEnvironment(
+  setEnvironmentDefault(
     organizationId: "org-id"
-    id: "env-id"
-  ) {
-    successful
-    messages { message }
-  }
+    environmentId: "ecomm-prod"
+    resourceId: "<resource-uuid-or-slug>"
+  ) { successful messages { message } }
 }
 ```
 
-## Package Operations
+`removeEnvironmentDefault(organizationId, id: <UUID>)` removes a default by its environment-default record id.
 
-### Configure Package
+## Component Operations (Project Blueprint)
+
+Components are slots in a project's blueprint, each backed by a bundle. Each environment auto-instantiates every component. CLI verbs `mass component add|remove|update|link|unlink` cover these — the GraphQL is here for completeness.
+
+### Add a component
 
 ```graphql
 mutation {
-  configurePackage(
+  addComponent(
     organizationId: "org-id"
-    id: "package-slug"
-    params: {
-      "instance_type": "t3.micro",
-      "storage_gb": 20
-    }
-  ) {
-    successful
-    result {
-      slug
-      params
-    }
-    messages { message }
-  }
+    projectId: "ecomm"
+    ociRepoName: "aws-aurora-postgres"
+    input: { id: "db", name: "Primary Database" }
+  ) { successful result { id } messages { message } }
 }
 ```
 
-### Copy Package Configuration
+`id` is the final slug segment of every instance for this component (e.g. `ecomm-prod-db`). Max 20 chars, lowercase alphanumeric.
 
-Copy config between packages (e.g., prod to test). Fields marked `$md.copyable: false` are automatically excluded.
+### Link / unlink components
 
 ```graphql
 mutation {
-  copyPackage(
+  linkComponents(
     organizationId: "org-id"
-    srcPackageId: "prod-package-slug"
-    dstPackageId: "test-package-slug"
-    overrides: {
-      "instance_type": "t3.micro",
-      "replicas": 1
+    input: {
+      fromComponentId: "ecomm-db"
+      fromField: "authentication"
+      fromVersion: "~1.0"
+      toComponentId: "ecomm-app"
+      toField: "database"
+      toVersion: "~2.0"
     }
-    includeSecrets: false
-  ) {
-    successful
-    result {
-      slug
-      params
-    }
-    messages { message }
-  }
+  ) { successful result { id fromField toField } messages { message } }
 }
 ```
 
-### Set Package Version
+`unlinkComponents(organizationId, id: <link-UUID>)` removes a link.
+
+## Instance Operations
+
+### Update version / release channel
 
 ```graphql
 mutation {
-  setPackageVersion(
+  updateInstance(
     organizationId: "org-id"
-    id: "package-slug"
-    version: "~1.2"
-    releaseStrategy: DEVELOPMENT
-  ) {
-    successful
-    result {
-      slug
-      version
-      releaseStrategy
-    }
-    messages { message }
-  }
+    id: "ecomm-prod-db"
+    input: { version: "~1.3", releaseStrategy: development }
+  ) { successful result { id resolvedVersion } messages { message } }
 }
 ```
 
-### Deploy Package
+`releaseStrategy` is the enum `stable | development` (note the CLI flag mirrors this lowercase form).
+
+### Copy configuration between instances
 
 ```graphql
 mutation {
-  deployPackage(
+  copyInstance(
     organizationId: "org-id"
-    id: "package-slug"
-    message: "Deployment message"
-  ) {
-    successful
-    result {
-      id
-      status
-      action
+    sourceId: "ecomm-prod-db"
+    destinationId: "ecomm-agentx7k2-db"
+    input: {
+      overrides: { instance_size: "small", multi_az: false }
+      copySecrets: true
+      copyRemoteReferences: false
+      message: "Promote prod config to upgrade test"
     }
-    messages { message }
-  }
+  ) { successful result { id params } messages { message } }
 }
 ```
 
-### Decommission Package
+Source and destination must be instances of the same component. Fields marked `$md.copyable: false` in the bundle are excluded automatically. A PLAN deployment is created on the destination so the copy can be reviewed before applying.
+
+### Manage instance secrets
 
 ```graphql
 mutation {
-  decommissionPackage(
+  setInstanceSecret(
     organizationId: "org-id"
-    id: "package-slug"
-    message: "Teardown message"
-  ) {
-    successful
-    result {
-      id
-      status
-    }
-    messages { message }
-  }
+    id: "ecomm-prod-db"
+    input: { name: "DATABASE_PASSWORD", value: "..." }
+  ) { successful messages { message } }
 }
 ```
 
-## Manifest Operations
+`removeInstanceSecret(organizationId, id, name)` deletes a secret.
 
-### Create Manifest
+### Reset state (escape hatch)
 
-Add a bundle to a project.
+`orphanInstance(organizationId, id, input: { deleteState: false })` clears Terraform/OpenTofu state locks. With `deleteState: true`, it permanently removes the remote state file — the next deployment provisions from scratch.
+
+## Deployment Operations
+
+### Create a deployment (CLI: `mass instance deploy`)
 
 ```graphql
 mutation {
-  createManifest(
+  createDeployment(
     organizationId: "org-id"
-    bundleId: "bundle-name"
-    projectId: "project-id"
-    name: "My Database"
-    slug: "mydb"
-    description: "PostgreSQL for the app"
-  ) {
-    successful
-    result {
-      id
-      slug
+    instanceId: "ecomm-prod-db"
+    input: {
+      action: PROVISION
+      message: "Initial deployment"
+      params: { instance_type: "t3.micro", storage_gb: 20 }
     }
-    messages { message }
-  }
+  ) { successful result { id status action } messages { message } }
 }
 ```
 
-### Link Manifests
+`action` is `PROVISION | PLAN | DECOMMISSION`. `params` snapshots into the deployment record — later instance edits don't mutate this row.
 
-Connect two manifests (create connection between bundles).
+### Deployment approval flow (no CLI)
 
 ```graphql
 mutation {
-  linkManifests(
+  proposeDeployment(
     organizationId: "org-id"
-    environmentId: "env-id"
-    srcManifestId: "source-manifest-id"
-    srcManifestField: "network"
-    destManifestId: "dest-manifest-id"
-    destManifestField: "network"
-  ) {
-    successful
-    messages { message }
-  }
+    instanceId: "ecomm-prod-db"
+    input: {
+      action: PROVISION
+      message: "Bump db_version 15 → 16"
+      params: { db_version: "16" }
+    }
+  ) { successful result { id status } messages { message } }
 }
 ```
 
-## Query Operations
+`approveDeployment`, `rejectDeployment`, `abortDeployment` each take `(organizationId, id)` of the proposal. Proposals enter `PROPOSED` status and don't execute until approved.
 
-### Get Environment Details
+## Resource Type Operations
+
+`mass resource-type publish <file>` is the right path for bundle development. The GraphQL `publishResourceType` mutation exists but is `@deprecated` — described in the schema as a "transitional shim from V0 `publishArtifactDefinition`" while resource types migrate to OCI-native publishing. Do not build new tooling against it.
+
+## Resource Operations
+
+```graphql
+mutation {
+  createResource(
+    organizationId: "org-id"
+    input: {
+      name: "External RDS"
+      resourceTypeId: "postgres"
+      payload: { ... matches resource type schema ... }
+    }
+  ) { successful result { id name } messages { message } }
+}
+```
+
+Use this to import infrastructure not deployed through Massdriver. Provisioned resources (those created by bundle deployments) are managed by the platform and don't need this mutation.
+
+## Common Queries
+
+### Project with environments and blueprint
 
 ```graphql
 query {
-  environment(organizationId: "org-id", id: "env-slug") {
+  project(organizationId: "org-id", id: "ecomm") {
     id
-    slug
+    name
+    environments { id name }
+    components { id name bundle { name } }
+    links { id fromField toField }
+  }
+}
+```
+
+### Environment with instances and defaults
+
+```graphql
+query {
+  environment(organizationId: "org-id", id: "ecomm-prod") {
+    id
     name
     description
-    packages {
-      slug
-      status
-      version
-      params
-    }
-    defaultConnections {
-      label
-      group
-      artifact { name type }
-    }
+    instances { id name status resolvedVersion params }
+    defaults { id resource { id name } }
+    parent { id }
   }
 }
 ```
 
-### Get Project with Environments
+### Instance details (replaces v1 `package` query)
 
 ```graphql
 query {
-  project(organizationId: "org-id", id: "project-slug") {
+  instance(organizationId: "org-id", id: "ecomm-prod-db") {
     id
-    slug
     name
-    environments {
-      slug
-      name
-      packages { slug status }
-    }
-    manifests {
-      slug
-      name
-      repo { name }
-    }
-  }
-}
-```
-
-### Get Package Details
-
-```graphql
-query {
-  package(organizationId: "org-id", id: "package-slug") {
-    slug
     status
-    version
+    params
+    paramsSchema
     resolvedVersion
     deployedVersion
     releaseStrategy
-    params
-    paramsSchema
-    bundle {
-      name
-      version
-    }
-    latestDeployment {
-      id
-      status
-      message
-    }
-    connections {
-      packageField
-      artifact { name type }
-    }
+    component { id bundle { name version } }
+    connections { fromField toField fromInstance { id } }
   }
 }
 ```
 
-### Get Deployment Logs
+### Deployments and logs
 
 ```graphql
 query {
-  deploymentLogStream(organizationId: "org-id", id: "deployment-id") {
-    id
-    logs {
-      content
-      metadata {
-        step
-        timestamp
-      }
-    }
-  }
-}
-```
-
-### List Bundles/Repos
-
-```graphql
-query {
-  repos(organizationId: "org-id", cursor: { limit: 20 }) {
-    items {
-      name
-      releaseChannels { name tag }
-      releases(strategy: DEVELOPMENT, cursor: { limit: 5 }) {
-        items {
-          version
-          name
-          description
-        }
-      }
-    }
+  deployments(organizationId: "org-id", instanceId: "ecomm-prod-db", cursor: { limit: 10 }) {
+    items { id status action version message createdAt }
     cursor { next }
   }
 }
 ```
 
-### Get Artifact Definitions
+```graphql
+query {
+  deployment(organizationId: "org-id", id: "<deployment-uuid>") {
+    id status action message createdAt finishedAt
+  }
+}
+```
 
 ```graphql
 query {
-  artifactDefinitions(organizationId: "org-id") {
-    name
-    label
-    schema
-    ui {
-      connectionOrientation
-      environmentDefaultGroup
+  deploymentLogs(organizationId: "org-id", id: "<deployment-uuid>") {
+    id
+    logs { content metadata { step timestamp } }
+  }
+}
+```
+
+### Bundles / OCI repos
+
+```graphql
+query {
+  ociRepos(organizationId: "org-id", cursor: { limit: 20 }) {
+    items { id name attributes }
+    cursor { next }
+  }
+}
+```
+
+```graphql
+query {
+  bundles(organizationId: "org-id", cursor: { limit: 20 }) {
+    items {
+      name
+      releases(strategy: development, cursor: { limit: 5 }) {
+        items { version description }
+      }
     }
+  }
+}
+```
+
+### Resource types
+
+```graphql
+query {
+  resourceTypes(organizationId: "org-id") {
+    items { id name label schema ui { connectionOrientation environmentDefaultGroup } }
   }
 }
 ```
 
 ## Enums
 
-### PackageStatus
-- `INITIALIZED` - Created but not provisioned
-- `PROVISIONED` - Successfully deployed
-- `DECOMMISSIONED` - Torn down
-- `FAILED` - Deployment failed
-- `EXTERNAL` - External resource
+### `DeploymentAction`
+- `PROVISION` — apply changes
+- `PLAN` — dry run, no state changes
+- `DECOMMISSION` — tear down
 
-### DeploymentStatus
-- `PENDING` - Queued
-- `RUNNING` - In progress
-- `COMPLETED` - Success
-- `FAILED` - Failed
-- `ABORTED` - Cancelled
+### `DeploymentStatus`
+- `PROPOSED` — proposal pending review (only via `proposeDeployment`)
+- `PENDING` — queued
+- `RUNNING` — in flight
+- `COMPLETED` — success
+- `FAILED` — failed
+- `ABORTED` — cancelled
+- `REJECTED` — proposal rejected
 
-### ReleaseStrategy
-- `STABLE` - Only stable releases
-- `DEVELOPMENT` - Includes dev releases
+### `InstanceStatus`
+- `INITIALIZED` — slot exists, never deployed
+- `PROVISIONED` — successfully deployed
+- `DECOMMISSIONED` — torn down
+- `FAILED` — last deployment failed
+- `EXTERNAL` — imported / not managed by Massdriver
 
-## ID Formats
+### `ReleaseStrategy`
+- `stable` — only stable releases (default)
+- `development` — accepts dev releases too
 
-- **Package slug**: `{project}-{environment}-{manifest}` (e.g., `myapp-staging-database`)
-- **Each segment**: Up to 20 chars, `a-z0-9`
-- **Environment slug**: When creating, just use the slug (e.g., `agentX7K2M9`), the parent containers are automatically added
+## ID conventions
+
+- **Project ID**: lowercase alphanumeric, max 20 chars, immutable.
+- **Environment ID** (full): `<project>-<env-suffix>` (e.g. `ecomm-prod`). The `id` field on `CreateEnvironmentInput` is just the suffix — the project segment is derived from `projectId`.
+- **Component ID** (project-scoped): `<project>-<component-suffix>` (e.g. `ecomm-db`). `AddComponentInput.id` is just the suffix.
+- **Instance ID**: `<project>-<env>-<component>` (e.g. `ecomm-prod-db`).
+- **Resource ID**: either a UUID (imported resources) or `<project>-<env>-<component>-<artifact-field>` slug (provisioned).
 
 ## Tips
 
-1. **Prefer CLI** for `mass bundle publish` and `mass logs` - more reliable
-2. **Use GraphQL** when you need to query multiple related entities or perform complex filtering
-3. **Check `messages`** on mutation results for detailed error info
-4. **Use `cursor`** for paginated queries
+1. Prefer the CLI for `mass bundle publish`, `mass instance deploy --follow`, and `mass deployment logs` — they are the most reliable paths.
+2. Use GraphQL when you need many related entities in one round-trip (e.g. a project plus its components, links, environments, and instances).
+3. Always check `messages { message }` on mutation results for detailed error info.
+4. Mutations that take an `input` typically also publish a JSON Schema at `/graphql/v2/inputs/<name>.json` — useful for client-side validation or form generation.
+5. Most queries that return lists accept `cursor: { limit: N }` and return `cursor { next }` for pagination.

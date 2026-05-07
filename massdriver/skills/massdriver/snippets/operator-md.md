@@ -7,7 +7,7 @@ templating: mustache
 > **Templating**: This runbook supports mustache templating.
 > **Available context**: `slug`, `params`, `connections.<name>`, `artifacts.<name>`
 
-## Package Information
+## Instance Information
 
 **Slug:** `{{slug}}`
 

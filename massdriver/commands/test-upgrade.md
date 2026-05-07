@@ -14,16 +14,17 @@ Start the upgrade-tester agent to validate a bundle version upgrade against prod
 
 ## What This Does
 
-1. **Identify package** - Package ID specifies exactly which bundle instance to clone (e.g., `api-prod-database`)
-2. **Fork environment** - Create isolated test environment from that package's environment
-3. **Adjust scale** - Optionally reduce resource sizes for non-critical dependencies
-4. **Baseline deploy** - Deploy current version to establish baseline
-5. **Upgrade** - Apply target version and validate
-6. **Report results** - Summary of upgrade success/failure with recommendations
+1. **Identify instance** - Instance slug specifies exactly which bundle deployment to clone (e.g., `api-prod-database`)
+2. **Fork environment** - Create isolated test environment via the `forkEnvironment` GraphQL mutation (no CLI verb yet)
+3. **Seed config** - Use `copyInstance` (GraphQL) to mirror prod config onto the forked instance
+4. **Adjust scale** - Optionally use `copyInstance` `overrides` to reduce non-critical dependency sizes
+5. **Baseline deploy** - `mass instance deploy <slug> --message "Baseline" --follow`
+6. **Upgrade** - `mass instance version <slug>@<target>` then `mass instance deploy <slug> --message "Upgrade test" --follow`
+7. **Report results** - Summary of upgrade success/failure with recommendations
 
 ## Usage
 
-Specify the package ID and target version:
+Specify the instance slug and target version:
 
 ```
 /massdriver:test-upgrade api-prod-database 1.3.0
@@ -33,16 +34,16 @@ Specify the package ID and target version:
 /massdriver:test-upgrade ecomm-production-redis 2.0.0
 ```
 
-Package IDs follow the format: `{project}-{environment}-{manifest}` (e.g., `api-prod-database`).
+Instance slugs follow the v2 format: `{project}-{environment}-{component}` (e.g., `api-prod-database`).
 
-If package ID or version aren't specified, the agent will ask.
+If the slug or version aren't specified, the agent will ask.
 
 ## Instructions
 
 Use the Task tool to spawn the `upgrade-tester` agent with the upgrade details. The agent will handle the interactive workflow.
 
 Parse the arguments to extract:
-- Package ID (first argument) - identifies the specific bundle instance to clone
+- Instance slug (first argument) - identifies the specific instance to clone
 - Target version (second argument) - the version to upgrade to
 
-If arguments weren't provided, ask the user for the package ID and target version.
+If arguments weren't provided, ask the user for the instance slug and target version.

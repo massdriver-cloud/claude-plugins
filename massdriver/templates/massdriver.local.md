@@ -26,25 +26,25 @@ default_test_project: ""
 
 # Massdriver Settings
 
-This file configures the Massdriver plugin for this project.
+This file configures the Massdriver plugin for this project (v2).
 
 ## Production Protection
 
 Environments matching the `production_pattern` above are protected:
-- Cannot deploy to them
-- Cannot configure packages in them
-- Cannot decommission resources in them
+- Cannot deploy instances in them (`mass instance deploy|destroy|version`)
+- Cannot mutate the environment record (`mass environment update`)
+- Cannot remove components/resources tied to a prod instance
 
-Read-only operations (viewing logs, artifacts) are still allowed.
+Read-only operations (`mass instance get`, `mass deployment logs`, `mass resource get|download`, etc.) are always allowed.
 
 ## Test Environment Naming
 
 The plugin creates test environments with the pattern `agent<RANDOM>`:
 - `agentx7k2m9` - 6 random hex characters
-- Environment slug: `<project>-agent<random>` (e.g., `claude-agentx7k2m9`)
-- Package slugs: `<env-slug>-<manifest>` (e.g., `claude-agentx7k2m9-postgres`)
+- Environment full slug: `<project>-agent<random>` (e.g., `claude-agentx7k2m9`)
+- Instance slugs: `<project>-<env>-<component>` (e.g., `claude-agentx7k2m9-postgres`)
 
-**Important**: Environment slugs already contain the project ID. Never double-prefix.
+**Important**: Instance slugs already include the project segment. Never double-prefix.
 
 ## Profile Configuration
 

@@ -1,6 +1,12 @@
 # Massdriver Pattern Reference
 
-Complete examples for bundles, artifact definitions, and platforms. Use these for copy-paste and learning.
+Complete examples for bundles, resource types, and platforms. Use these for copy-paste and learning.
+
+> **Naming note (v2):**
+> - Schema contracts are **resource types** (formerly "artifact definitions"), and they live in `resource-type/<name>/massdriver.yaml`. Some existing repositories (e.g. the catalog) still use the legacy `artifact-definitions/` directory and haven't been refactored — both work; new bundles should use `resource-type/`.
+> - The Terraform provider's HCL resource is now `massdriver_resource` (formerly `massdriver_artifact`).
+> - The bundle YAML keeps the section keys `params:`, `connections:`, and `artifacts:` — those are unchanged.
+> - The CLI calls them resources at runtime (`mass resource get|download|create`). The "artifact" you write in HCL becomes a "resource" at deploy time.
 
 ## Complete Bundle Examples
 
@@ -130,7 +136,7 @@ resource "aws_db_instance" "main" {
 
 **src/artifacts.tf**:
 ```hcl
-resource "massdriver_artifact" "database" {
+resource "massdriver_resource" "database" {
   field = "database"
   name  = "PostgreSQL ${var.md_metadata.name_prefix}"
 
@@ -362,13 +368,13 @@ ui:
 
 ---
 
-## Artifact Definition Patterns
+## Resource Type Patterns (a.k.a. Artifact Definitions)
 
-Artifact definitions live in `artifact-definitions/<name>/massdriver.yaml`. They define schema contracts for data passed between bundles.
+Resource types live in `resource-type/<name>/massdriver.yaml` (legacy repos may use `artifact-definitions/` — both are accepted). They define schema contracts for data passed between bundles.
 
 **Directory structure:**
 ```
-artifact-definitions/
+resource-type/
 └── my-artifact/
     ├── massdriver.yaml       # Required: schema + UI config
     ├── instructions/         # Optional: markdown walkthroughs
@@ -389,7 +395,7 @@ artifact-definitions/
 
 ### Platform/Credential Artifact (Full Example)
 
-**platforms/aws/massdriver.yaml** (or artifact-definitions/aws-iam-role/massdriver.yaml):
+**platforms/aws/massdriver.yaml** (or resource-type/aws-iam-role/massdriver.yaml):
 ```yaml
 name: aws-iam-role
 label: AWS IAM Role
@@ -430,7 +436,7 @@ schema:
 
 ### Database Artifact (Credentials + Policies)
 
-**artifact-definitions/postgres/massdriver.yaml**:
+**resource-type/postgres/massdriver.yaml**:
 ```yaml
 name: postgres
 label: PostgreSQL
@@ -492,7 +498,7 @@ schema:
 
 ### Network Artifact (Environment Default)
 
-**artifact-definitions/network/massdriver.yaml**:
+**resource-type/network/massdriver.yaml**:
 ```yaml
 name: network
 label: Network
@@ -536,7 +542,7 @@ schema:
 
 ### Minimal Artifact
 
-**artifact-definitions/application/massdriver.yaml**:
+**resource-type/application/massdriver.yaml**:
 ```yaml
 name: application
 label: Application
@@ -564,7 +570,7 @@ schema:
 
 Exports let users download config files with artifact data interpolated via mustache templating. Common use cases: kubeconfig, VPN certs, CLI configs.
 
-**artifact-definitions/kubernetes-cluster/massdriver.yaml**:
+**resource-type/kubernetes-cluster/massdriver.yaml**:
 ```yaml
 name: kubernetes-cluster
 label: Kubernetes Cluster
@@ -603,7 +609,7 @@ schema:
       type: string
 ```
 
-**artifact-definitions/kubernetes-cluster/exports/kubeconfig.yaml**:
+**resource-type/kubernetes-cluster/exports/kubeconfig.yaml**:
 ```yaml
 apiVersion: v1
 kind: Config
@@ -630,7 +636,7 @@ Export templates use `{{artifact.<field>}}` for interpolation. When users click 
 
 ## Platform Definition Pattern
 
-Platforms are artifact definitions for cloud authentication. They're technically identical to artifact definitions in `artifact-definitions/` - the separate `platforms/` directory is purely organizational to distinguish infrastructure artifacts from authentication/onboarding artifacts.
+Platforms are resource types for cloud authentication. They're technically identical to other resource types in `resource-type/` — the separate `platforms/` directory is purely organizational to distinguish credential resource types from infrastructure ones.
 
 **platforms/aws/massdriver.yaml**:
 ```yaml
@@ -690,16 +696,16 @@ provider "aws" {
 }
 ```
 
-**Environment Defaults Flow:**
-1. Admin creates AWS credential artifact via platform UI form
-2. Admin sets credential as default for "production" environment
-3. User adds RDS bundle to "production" environment
-4. Bundle automatically receives the credential (no manual connection needed)
-5. Terraform provider authenticates using the role ARN
+**Environment Defaults Flow (v2):**
+1. Admin creates AWS credential resource via platform UI form (or `mass resource create`)
+2. Admin sets it as default for the production environment: `mass environment default <project>-prod <resource-id>`
+3. The blueprint includes a component for the RDS bundle (`mass component add <project> aws-rds-postgres --id db`)
+4. Each environment auto-instantiates the component; the prod instance receives the default credential automatically
+5. Terraform provider authenticates using the role ARN at deploy time
 
 **Cross-Project Sharing:**
 - Project A (Platform Team): Manages VPC, sets network as shareable
-- Project B (App Team): Deploys into the VPC but cannot modify it
+- Project B (App Team): Deploys into the VPC via remote references (`setRemoteReference` GraphQL mutation)
 - Connection presentation controls visibility: linkable handle vs env-default-only
 
 ---
@@ -770,7 +776,7 @@ artifacts:
 ```
 ```hcl
 # BAD
-resource "massdriver_artifact" "database" {
+resource "massdriver_resource" "database" {
   field = "database"  # Should be "postgres_db"!
 }
 ```

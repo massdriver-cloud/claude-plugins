@@ -1,7 +1,7 @@
 {
   "name": "massdriver",
-  "description": "Develop and test Massdriver infrastructure bundles with interactive workflows: /develop for full bundle development with deploy loops, /test-upgrade for day 2 upgrade validation, and /gen for quick scaffolding. Includes safety guardrails, compliance automation, and GraphQL API integration.",
-  "version": "3.0.0",
+  "description": "Develop and test Massdriver v2 infrastructure bundles with interactive workflows: /develop for full bundle development with deploy loops, /test-upgrade for day 2 upgrade validation, and /gen for quick scaffolding. Includes safety guardrails, compliance automation, and GraphQL v2 API integration.",
+  "version": "4.0.0",
   "author": {
     "name": "Massdriver",
     "url": "https://massdriver.cloud"

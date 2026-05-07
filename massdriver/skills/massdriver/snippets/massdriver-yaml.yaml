@@ -35,7 +35,7 @@ connections:
     # - network                    # Uncomment if required
   properties:
     network:
-      $ref: network                # Must match artifact-definitions/network.json
+      $ref: network                # Must match resource-type/network.json
       title: Network               # Display name
     # Add more connections as needed:
     # database:
@@ -47,7 +47,7 @@ artifacts:
     - my_artifact                  # List required artifact names
   properties:
     my_artifact:
-      $ref: my-artifact-type       # Must match artifact-definitions/<name>.json
+      $ref: my-artifact-type       # Must match resource-type/<name>.json
       title: My Artifact           # Display name
 
 steps:
