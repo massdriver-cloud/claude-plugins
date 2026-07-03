@@ -27,6 +27,7 @@ This is the biggest shift from v1: v1 had `mass pkg create` per-environment to p
 | **Full Development** | `/massdriver:develop <use-case>` | Creating/updating bundles with full test loop |
 | **Upgrade Testing** | `/massdriver:test-upgrade <bundle>` | Validating version upgrades against prod config |
 | **Quick Generation** | `/massdriver:gen <use-case>` | Scaffolding a bundle without deploy loop |
+| **Resource Import** | `/massdriver:import <resource>` | Bringing existing cloud infra under Massdriver (new bundle, existing bundle, or resource-only) |
 
 ## Reference Files
 
@@ -34,6 +35,7 @@ This is the biggest shift from v1: v1 had `mass pkg create` per-environment to p
 - [references/graphql.md](./references/graphql.md) - GraphQL v2 API operations
 - [references/alarms.md](./references/alarms.md) - Adding monitoring alarms (AWS/GCP/Azure)
 - [references/compliance.md](./references/compliance.md) - Post-deployment Checkov remediation
+- [references/import.md](./references/import.md) - Importing existing cloud resources (new bundle / existing bundle / resource-only)
 - [snippets/](./snippets/) - Copy-paste templates
 
 ## Safety Rules
@@ -296,6 +298,9 @@ mass instance deploy <project>-<env>-<component> \
 # OR redeploy with the LAST config (no flags):
 mass instance deploy <project>-<env>-<component> --message "Retry after publish" --follow
 
+# OR plan only — run the plan in Massdriver's provisioner WITHOUT applying:
+mass instance deploy <project>-<env>-<component> --plan
+
 # Check Checkov findings in the streamed output, or after the fact:
 mass deployment logs <deployment-id> 2>&1 | grep -E "Check:|FAILED"
 ```
@@ -304,6 +309,7 @@ mass deployment logs <deployment-id> 2>&1 | grep -E "Check:|FAILED"
 - `--patch` with JQ expressions = surgical config edits without re-sending the whole params file.
 - `--follow` rolls config + deploy + log streaming into one call.
 - A flagless `mass instance deploy <slug> -m "..."` reuses the last config — handy after a `mass bundle publish` to roll the new release without re-stating params.
+- `--plan` runs the plan in Massdriver's provisioner without applying — the audited, credential-correct way to preview changes (e.g. after a `tofu import`). Never run `tofu plan` locally against managed state.
 
 ### Phase 5: Compliance Remediation
 
@@ -764,6 +770,7 @@ mass instance version <project>-<env>-<comp>@latest --release-channel developmen
 mass instance deploy <project>-<env>-<comp> --params=/tmp/params.json --message "..." --follow
 mass instance deploy <project>-<env>-<comp> --patch '.field = value' --message "..." --follow
 mass instance deploy <project>-<env>-<comp> --message "Redeploy with last config" --follow
+mass instance deploy <project>-<env>-<comp> --plan   # plan only, runs in provisioner (e.g. verify a tofu import)
 mass instance destroy <project>-<env>-<comp> --force --message "Teardown"
 mass instance get <project>-<env>-<comp> -o json
 
@@ -790,4 +797,5 @@ mass version
 - [references/graphql.md](./references/graphql.md) - GraphQL v2 API operations
 - [references/alarms.md](./references/alarms.md) - Monitoring alarms
 - [references/compliance.md](./references/compliance.md) - Checkov remediation
+- [references/import.md](./references/import.md) - Importing existing cloud resources
 - [snippets/](./snippets/) - Copy-paste templates

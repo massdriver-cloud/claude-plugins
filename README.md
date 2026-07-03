@@ -63,6 +63,21 @@ Generate a bundle without the deploy loop.
 /massdriver:gen RDS MySQL for OLTP workloads
 ```
 
+### `/massdriver:import` - Import Existing Cloud Resources
+
+Bring cloud infrastructure that already exists (created by hand, another IaC tool, or another account) under Massdriver. The agent asks **how** you want to import, then runs the matching workflow.
+
+```
+/massdriver:import existing production RDS Postgres instance created by hand
+```
+
+**Three paths (the agent prompts you to choose):**
+1. **New bundle** — author a brand-new reusable bundle, publish it, add it to the blueprint (creating an instance), then `tofu import` the resource into that instance's managed state.
+2. **Existing bundle** — use an existing bundle, create/pick an undeployed instance, then `tofu import` the resource into that instance's managed state.
+3. **Register resource only** — create an `EXTERNAL` Massdriver resource so other components can connect to it, with no IaC management.
+
+Paths 1 and 2 put the resource under Massdriver's IaC management; path 3 only makes it referenceable. Bundles must stay reusable, so imports use the `tofu import` command against Massdriver's managed HTTP state backend — **not** `import {}` blocks. Import runs locally, but the plan runs in Massdriver's provisioner via `mass instance deploy --plan` (never `tofu plan` locally); the agent loops import + plan until clean before anything is deployed.
+
 ## What's New in v2
 
 If you're coming from this plugin's v3.x (which targeted Massdriver v1), the major shifts:
@@ -103,11 +118,13 @@ claude-plugins/
     │   └── plugin.json
     ├── agents/
     │   ├── bundle-dev.md           # Full development workflow (v2)
-    │   └── upgrade-tester.md       # Day 2 upgrade testing (v2)
+    │   ├── upgrade-tester.md       # Day 2 upgrade testing (v2)
+    │   └── resource-import.md      # Import existing cloud resources (v2)
     ├── commands/
     │   ├── develop.md              # /massdriver:develop
     │   ├── test-upgrade.md         # /massdriver:test-upgrade
-    │   └── gen.md                  # /massdriver:gen
+    │   ├── gen.md                  # /massdriver:gen
+    │   └── import.md               # /massdriver:import
     ├── hooks/
     │   └── hooks.json              # Safety guardrails (v2 command surface)
     ├── templates/
@@ -119,7 +136,8 @@ claude-plugins/
             └── references/
                 ├── graphql.md      # GraphQL v2 API operations
                 ├── alarms.md       # AWS/GCP/Azure monitoring
-                └── compliance.md   # Checkov remediation
+                ├── compliance.md   # Checkov remediation
+                └── import.md       # Importing existing cloud resources
 ```
 
 ## Safety Guardrails
