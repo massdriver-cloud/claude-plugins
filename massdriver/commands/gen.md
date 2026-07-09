@@ -62,7 +62,7 @@ bundles/<bundle-name>/
 
 - **Params**: Focus on 3-5 developer-facing questions, use presets
 - **80/20 rule**: Cover common use cases, don't over-generalize
-- **Connections**: Use existing resource types (`mass resource-type list`, ignore any `massdriver/` prefixed results)
+- **Connections**: Use existing resource types (`mass resource-type list`)
 - **Artifacts**: Match the resource type's schema exactly (the YAML key is still `artifacts:`; runtime calls them resources)
 - **Provider**: `mass resource-type get <platform>` FIRST, then write provider using only those fields — resource types and providers are 1:1
 - **Compliance**: Default to secure settings, add `halt_on_failure` for prod

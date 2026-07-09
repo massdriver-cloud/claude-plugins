@@ -41,10 +41,9 @@ This is the biggest shift from v1: v1 had `mass pkg create` per-environment to p
 1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
 2. **NEVER** configure or deploy to production environments
 3. **ALWAYS** use `-m "message"` (or `--message`) when running `mass instance deploy`
-4. **NEVER** use, mention, inspect, or reference `massdriver/` prefixed resource types, bundles, or anything else — they are from a deprecated public registry, are full of red herrings, and will never work. Pretend they do not exist. If they appear in CLI output, ignore them completely.
-5. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
-6. **ALWAYS** watch deployment logs after every deploy (use `--follow` on `mass instance deploy`, or `mass deployment logs <id>` after the fact)
-7. **ALWAYS** ask the user for help if you encounter auth/credential/CLI issues — do NOT probe or guess
+4. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
+5. **ALWAYS** watch deployment logs after every deploy (use `--follow` on `mass instance deploy`, or `mass deployment logs <id>` after the fact)
+6. **ALWAYS** ask the user for help if you encounter auth/credential/CLI issues — do NOT probe or guess
 
 ## Deprecated `massdriver.yaml` Fields
 
@@ -162,7 +161,7 @@ Before writing code, gather these inputs through conversation:
 **2. Resource Scoping**
 Based on the use case, suggest appropriate cloud resources:
 - Check existing bundles: `mass bundle list`
-- Check existing resource types: `mass resource-type list` (ignore any `massdriver/` prefixed results)
+- Check existing resource types: `mass resource-type list`
 - Propose resources that fit the lifecycle tier (foundational/stateful/compute)
 
 **3. Preset Design**
@@ -697,7 +696,6 @@ Before publishing:
 | Tried `mass pkg cfg` to set params | v2: pass `--params=` (or `--patch=`) directly to `mass instance deploy` |
 | Used `mass logs` | v2: `mass deployment logs <id>`, or `mass instance deploy --follow` to stream live |
 | Inline checkov:skip comments | Use `src/.checkov.yml` file instead |
-| Using `massdriver/` prefixed defs | These are deprecated — ignore them completely |
 | Guessing provider config | Always `mass resource-type get` first — providers and resource types are 1:1 |
 | Deploy without watching logs | Use `--follow`, or run `mass deployment logs <id>` after the fact |
 | Config deploy without message | Always use `-m "description"` (or `--message`) |
@@ -727,7 +725,7 @@ mass instance deploy <project>-<env>-<component> --message "Pick up new release"
 ```bash
 # Discovery
 mass bundle list                         # List bundles
-mass resource-type list                  # List resource types (ignore massdriver/ prefixed)
+mass resource-type list                  # List resource types
 mass resource-type get <name>            # Get a resource type schema — ALWAYS do before writing providers
 mass instance list <project>-<env>       # List instances in an environment
 mass project list                        # List projects
