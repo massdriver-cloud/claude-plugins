@@ -28,7 +28,9 @@ from dev up through production.
 3. **Recommend a project layout** — one project vs. sharded projects, environment defaults,
    and remote references for shared/cross-project resources.
 4. **Recommend bundles** — reuse existing org bundles where they fit; identify where a
-   custom application bundle is needed.
+   custom application bundle is needed. If the app needs a capability with no bundle in the
+   (grant-filtered) catalog, the agent won't improvise infrastructure — it tells the user
+   exactly what to request from their DevOps team, and keeps building the rest.
 5. **Pick a runtime** — inspect the platform for what's available (container registry vs.
    serverless) and choose. See the stub logic below.
 6. **Build + publish the app bundle directly to the platform** (`--development`) so the
