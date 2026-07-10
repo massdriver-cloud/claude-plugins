@@ -30,8 +30,9 @@ from dev up through production.
    custom application bundle is needed. If the app needs a capability with no bundle in the
    (grant-filtered) catalog, the agent won't improvise infrastructure — it tells the user
    exactly what to request from their DevOps team, and keeps building the rest.
-5. **Pick a runtime** — inspect the platform for what's available (container registry vs.
-   serverless) and choose. See the stub logic below.
+5. **Pick a runtime** — examines the use case against the org's available bundles,
+   environments, and standards, then picks the best runtime and proceeds. It states its
+   reasoning; it doesn't make the citizen engineer choose. See below.
 6. **Build + publish the app bundle directly to the platform** (`--development`) so the
    citizen engineer never needs a git remote or a PR to get moving. Source is committed to a
    **local** git repo automatically; a remote is opt-in (the agent asks if one already exists).
@@ -41,25 +42,23 @@ The whole flow is meant to be as frictionless as: **install Claude → install t
 plugin → set access keys → `/massdriver:architect`.** No git hosting, CI, or repo permissions
 required.
 
-## Runtime Selection (stub behavior)
+## Runtime Selection
 
-The architect inspects what the platform actually offers and picks a runtime:
+The architect doesn't ask the user to pick a runtime — that's the expertise it supplies. It
+examines the use case and the org's (grant-filtered) catalog and standards, states its pick
+with the reasoning, and keeps moving:
 
-- If it sees a **container registry** available → containerized runtime (ECS/Cloud Run/etc.).
-- If it sees **Lambda** (serverless) and **no** container registry → serverless runtime.
+> "Given the use case, you have **Lambda** or **Kubernetes** deployments available. Kubernetes
+> makes the most sense here because <x> — building your container and pushing to your ECR now."
 
-For the demo, the platform has Lambda but no Docker registry, so the architect will **stub out
-to Lambda** and say so explicitly. It will also make clear that this is a config-driven choice:
+- **Containers** (Kubernetes/ECS/etc.) when the app is long-running, needs persistent
+  connections, or the org has standardized on clusters — the agent writes the Dockerfile,
+  builds and pushes the image to the org's granted registry (e.g. ECR), and builds the app
+  bundle to deploy onto a cluster the user has access to.
+- **Serverless** (e.g. Lambda) for event-driven or request-scoped workloads, or when it's the
+  only granted runtime.
 
-```jsonc
-// massdriver.config.json  (project root)
-{
-  "useDocker": true   // <- flip this and the architect would build a container runtime instead
-}
-```
-
-If `massdriver.config.json` sets `useDocker: true` (or names a specific registry/runtime), the
-architect honors that instead of inferring from the platform.
+If the user pushes back, the agent adjusts — but it never opens with a question.
 
 ## Usage
 

@@ -55,9 +55,6 @@ Local version control is good and you set it up automatically; a remote is optio
   runtime, build the application bundle, publish directly to the platform, deploy.
 - **`/massdriver:architect`** always routes here.
 
-> **Note:** Runtime selection below is intentionally *stubbed* for the demo. It is marked
-> **STUB** and describes the config-driven behavior a full implementation would follow.
-
 ## v2 Mental Model (must understand before working)
 
 Massdriver v2 separates **design time** from **deploy time**:
@@ -119,7 +116,6 @@ mass environment get <project>-<env>      # environment defaults (credentials, s
 ```
 
 Also read the repo/project root for intent and config:
-- `massdriver.config.json` — **runtime and layout preferences** (e.g. `useDocker`). See Phase 4.
 - `.claude/massdriver.local.md` — plugin settings (profile, `production_pattern`, default project).
 - Any existing `bundles/`, `projects/`, or blueprint files.
 
@@ -168,25 +164,37 @@ and why.
 A short blueprint proposal: projects, components in each, links between them, remote references
 across them, and which environments will exist.
 
-## Phase 4: Pick the Runtime  **[STUB]**
+## Phase 4: Pick the Runtime
 
-Choose how the app actually runs. Inspect what the platform offers, then decide:
+Choose how the app actually runs — **decisively**. By now you know the use case (Phase 2) and
+what the org offers (Phase 1: bundles, resource types, environments, and their standards). Do
+NOT ask the user to pick a runtime or confirm your choice — runtime selection is exactly the
+expertise you're supplying to a citizen engineer. Decide, state your reasoning in one breath,
+and keep moving:
 
-1. **Config wins first.** If `massdriver.config.json` sets `useDocker: true` (or names a registry /
-   runtime), honor it — build a **containerized** runtime (ECS / Cloud Run / equivalent) against
-   that registry.
-2. **Otherwise infer from the platform:**
-   - Container registry present → containerized runtime.
-   - Lambda / serverless present and **no** container registry → **serverless runtime**.
+> "Given the use case, you have **Lambda** or **Kubernetes** deployments available. Kubernetes
+> makes the most sense here because <the app is long-running / needs persistent connections /
+> matches how the rest of your org's services run>. Building the container and pushing to your
+> ECR now."
 
-**Demo behavior:** the platform in the demo has Lambda but no Docker registry, so **stub out to
-Lambda** and say so out loud, e.g.:
+How to decide:
 
-> "I don't see a container registry available, and I do see Lambda — so I'll go with a **Lambda**
-> serverless runtime. If you set `massdriver.config.json` to `{ \"useDocker\": true }` (and had a
-> registry), I'd build a containerized runtime instead."
+1. **Enumerate what's actually granted** — runtime-capable bundles and resources from Phase 1
+   discovery (e.g. a Kubernetes cluster + container registry, a serverless/Lambda bundle).
+2. **Fit to the use case** — long-running services, background workers, persistent connections,
+   or steady traffic → containers on the granted orchestrator; spiky, event-driven,
+   request-scoped work → serverless.
+3. **Follow org standards** — if existing projects/components show a convention (most services
+   on k8s, ECR in the environment defaults), match it. Consistency beats preference.
+4. **Only one runtime granted → use it.** State that and move on.
 
-Make the tradeoff explicit; don't silently pick one.
+Then act on the choice immediately:
+- **Containers**: write the Dockerfile, `docker build` and push the image to the org's granted
+  registry (e.g. the ECR from environment defaults), and build the app bundle to deploy onto a
+  cluster the user has access to.
+- **Serverless**: build the function-based app bundle.
+
+If the user pushes back, adjust — but never open with a question.
 
 ## Phase 5: Recommend Bundles
 
@@ -241,7 +249,7 @@ control locally**. Do this automatically so the citizen engineer gets it for fre
 # If the working dir isn't already a git repo, initialize one — no remote required
 git rev-parse --is-inside-work-tree 2>/dev/null || git init
 git add -A
-git commit -m "architect: <app> scaffold — <project>/<component> (Lambda runtime)"
+git commit -m "architect: <app> scaffold — <project>/<component> (<runtime>)"
 ```
 
 - **Local commit is mandatory and requires no remote.** A citizen engineer with only Claude, the
