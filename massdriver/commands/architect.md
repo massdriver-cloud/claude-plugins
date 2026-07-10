@@ -1,5 +1,5 @@
 ---
-name: slop
+name: architect
 description: Turn an app idea into governed infrastructure via Massdriver's self-service portal
 argument-hint: <app idea / use-case description>
 allowed-tools:
@@ -8,14 +8,13 @@ allowed-tools:
   - AskUserQuestion
 ---
 
-# Slop → Governed Infrastructure
+# Architect — App Idea → Governed Infrastructure
 
-> **Placeholder / demo command.** `slop` is the friendly name for "vibe coding" — a citizen
-> engineer describing an app in plain language and letting an LLM build it. The point of this
-> command is to catch that slop *before it lands on someone's laptop* and instead route it
-> through Massdriver's self-service portal: it ends up in the org's cloud account, on
-> secure/compliant/**correct** bundles, inside a visual, audit-filled environment with a full
-> deployment history — not an unreviewed pile of Terraform in a personal repo.
+> **Placeholder / demo command.** Citizen engineers — non-infra folks vibe-coding an app with an
+> LLM — shouldn't end up with an unreviewed pile of infrastructure on a laptop. This command
+> routes that work through Massdriver's self-service portal instead: it lands in the org's cloud
+> account, on secure/compliant/**correct** bundles, inside a visual, audit-filled environment
+> with a full deployment history.
 
 Start the `architect` agent to take an app idea and turn it into a real Massdriver project:
 the right project layout, the right bundles, the right runtime, and a permission-gated path
@@ -39,7 +38,8 @@ from dev up through production.
 7. **Progress through environments** — dev → staging → prod, gated by the user's permissions.
 
 The whole flow is meant to be as frictionless as: **install Claude → install the Massdriver
-plugin → set access keys → `/massdriver:slop`.** No git hosting, CI, or repo permissions required.
+plugin → set access keys → `/massdriver:architect`.** No git hosting, CI, or repo permissions
+required.
 
 ## Runtime Selection (stub behavior)
 
@@ -64,11 +64,11 @@ architect honors that instead of inferring from the platform.
 ## Usage
 
 ```
-/massdriver:slop a WordPress site for our marketing team
+/massdriver:architect a WordPress site for our marketing team
 ```
 
 ```
-/massdriver:slop a serverless API that resizes uploaded images and stores them in S3
+/massdriver:architect a serverless API that resizes uploaded images and stores them in S3
 ```
 
 If no idea is provided, the agent will ask what you want to build.
