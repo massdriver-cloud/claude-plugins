@@ -63,6 +63,18 @@ Generate a bundle without the deploy loop.
 /massdriver:gen RDS MySQL for OLTP workloads
 ```
 
+### `/massdriver:architect` - Citizen Engineer App Design (experimental)
+
+Turn a plain-language app idea into a governed Massdriver project: the agent probes the
+(grant-filtered) platform catalog, recommends project layout/bundles/runtime, builds and
+publishes the app bundle directly to the platform, and promotes through environments gated
+by your permissions. If a needed capability has no granted bundle, it tells the user exactly
+what to request from their DevOps team instead of improvising infrastructure.
+
+```
+/massdriver:architect a serverless API that resizes uploaded images and stores them in S3
+```
+
 ## What's New in v2
 
 If you're coming from this plugin's v3.x (which targeted Massdriver v1), the major shifts:
@@ -102,9 +114,11 @@ claude-plugins/
     ├── .claude-plugin/
     │   └── plugin.json
     ├── agents/
+    │   ├── architect.md            # Citizen-engineer project design (experimental)
     │   ├── bundle-dev.md           # Full development workflow (v2)
     │   └── upgrade-tester.md       # Day 2 upgrade testing (v2)
     ├── commands/
+    │   ├── architect.md            # /massdriver:architect
     │   ├── develop.md              # /massdriver:develop
     │   ├── test-upgrade.md         # /massdriver:test-upgrade
     │   └── gen.md                  # /massdriver:gen
@@ -183,6 +197,43 @@ Needs AWS credentials, produces an S3 bucket resource.
 ```
 
 The agent will ask about your production naming convention, what to copy from prod (secrets, remote refs, env defaults), and whether to mirror or low-scale dependency components.
+
+## Local Development & Testing (plugin contributors)
+
+Test plugin changes straight from a working tree — no publish, no reinstall, nothing lands in `main`:
+
+```bash
+# 1. Work on a branch so main stays clean
+git checkout -b my-change
+
+# 2. Disable the marketplace-installed copy so it can't shadow your local one
+claude plugin disable massdriver
+
+# 3. Launch a session that loads the plugin from disk (this session only)
+claude --plugin-dir /path/to/claude-plugins/massdriver
+```
+
+Smoke test inside that session:
+- Run a command (e.g. `/massdriver:architect a serverless image resizer`) and confirm it routes to the right agent
+- `/agents` — confirm `architect`, `bundle-dev`, `upgrade-tester` are registered
+- Try `mass bundle publish` (no `-d`) — the safety hook should block it
+
+**Iterate:** `--plugin-dir` reads the live directory, so edit files → restart the session → retest. No republish cycle.
+
+Validate manifests anytime:
+
+```bash
+claude plugin validate ./massdriver   # plugin.json
+claude plugin validate .              # marketplace.json
+```
+
+When you're done:
+
+```bash
+claude plugin enable massdriver       # restore the installed copy
+```
+
+To ship: PR the branch into `main`, bump `version` in `massdriver/.claude-plugin/plugin.json`, merge. Installed copies pick it up with `claude plugin update massdriver` (restart required).
 
 ## Requirements
 
