@@ -2,7 +2,7 @@
 
 Build infrastructure bundles for [Massdriver](https://massdriver.cloud) v2 — the internal developer platform that turns infrastructure-as-code into reusable, self-service components with built-in guardrails.
 
-This plugin requires the **v2 Massdriver CLI** (`mass`) and targets the **v2 GraphQL API**. It is not compatible with v1.
+This plugin requires the **v2 Massdriver CLI** (`mass`) and targets the **v2 GraphQL API**.
 
 ## Installation
 
@@ -62,16 +62,6 @@ Generate a bundle without the deploy loop.
 ```
 /massdriver:gen RDS MySQL for OLTP workloads
 ```
-
-## What's New in v2
-
-If you're coming from this plugin's v3.x (which targeted Massdriver v1), the major shifts:
-
-- **Project blueprints**: Bundles are added to a project's blueprint once via `mass component add`. Every environment auto-gets an instance.
-- **`mass instance deploy`**: One command for config + deploy + log streaming (`--params`, `--patch`, `--follow`). Replaces `mass pkg cfg` + `mass pkg deploy` + `mass logs`.
-- **CLI-first lifecycle**: Project + environment creation, blueprint composition (`mass component add|link`), and the dev server (`mass server`) are all CLI now.
-- **Lowercase release channels**: `--release-channel development` (or `stable`). The old `latest+dev` / `~X.Y+dev` strings are gone.
-- **Renames**: `pkg` → `instance`, `def` → `resource-type`, `artifact` → `resource`, `env` → `environment`, `mass logs` → `mass deployment logs`. Old verbs work as aliases for now but new code should use the new names.
 
 ## What This Plugin Does
 
