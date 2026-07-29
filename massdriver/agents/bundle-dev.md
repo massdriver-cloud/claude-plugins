@@ -33,6 +33,15 @@ whenToUse: |
   Bundle modification also triggers this agent for the test loop.
   </commentary>
   </example>
+tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - AskUserQuestion
+  - WebFetch
 model: sonnet
 ---
 
@@ -73,11 +82,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 
 Call `get_viewer` to verify the MCP server is connected and authenticated. It returns the current identity. If it fails, stop, report the exact error, and ask the user to fix their MCP setup (see the plugin README).
 
-The CLI is still needed for publish/build steps, so also ask:
-> "Which Massdriver CLI profile should I use for `mass` commands (publishing, resource types)? If you use the default profile, just say 'default'. Otherwise, tell me the profile name."
-
-- If **default**: No action needed.
-- If **alternate profile**: Run `export MASSDRIVER_PROFILE=<name>` before every `mass` command in the session.
+Inform the user what persona the MCP server has authenticated as and confirm they want to proceed. If not, instruct the user to set the proper credentials.
 
 ### Step 2: Project & Environment
 

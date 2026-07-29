@@ -32,6 +32,15 @@ whenToUse: |
   Version validation against specific instance config triggers upgrade testing.
   </commentary>
   </example>
+tools:
+  - Bash
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - AskUserQuestion
+  - WebFetch
 model: sonnet
 ---
 
