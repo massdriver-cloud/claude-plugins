@@ -2,7 +2,7 @@
 
 Build infrastructure bundles for [Massdriver](https://massdriver.cloud) v2 — the internal developer platform that turns infrastructure-as-code into reusable, self-service components with built-in guardrails.
 
-This plugin requires the **v2 Massdriver CLI** (`mass`) and targets the **v2 GraphQL API**. It is not compatible with v1.
+This plugin is **MCP-first**: all control-plane operations (projects, environments, components, deployments, resources) go through the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server), which the plugin registers automatically. The **v2 Massdriver CLI** (`mass`) is still required for filesystem-bound work — bundle build/lint/publish/pull and resource-type publishing. Not compatible with Massdriver v1.
 
 ## Installation
 
@@ -13,6 +13,31 @@ This plugin requires the **v2 Massdriver CLI** (`mass`) and targets the **v2 Gra
 # Install the plugin
 /plugin install massdriver@massdriver
 ```
+
+### MCP server setup
+
+The plugin launches the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server) via a bundled script ([scripts/run-mcp-server.sh](massdriver/scripts/run-mcp-server.sh)) that runs the official Docker image — no local binary or language toolchain needed. The only prerequisite is **Docker** installed and running (Docker Desktop on macOS/Windows, Docker Engine on Linux).
+
+The script runs the container as your user with `--pull always`, so every Claude Code session starts on the newest published image (an up-to-date image is a fast metadata check, not a re-download), and your `~/.config/massdriver` is mounted read-only when it exists. Both auth modes work out of the box:
+
+```bash
+# Option A — environment variables (take precedence):
+export MASSDRIVER_API_KEY="your-api-key"
+export MASSDRIVER_ORGANIZATION_ID="your-org-id"
+export MASSDRIVER_URL="https://api.massdriver.cloud"  # optional; only for self-hosted instances
+
+# Option B — profiles: nothing to do. Your ~/.config/massdriver/config.yaml is
+# mounted into the container; the `default` profile is used unless you export
+# MASSDRIVER_PROFILE=<name>.
+```
+
+Optionally pre-pull before your first session to skip the initial download delay: `docker pull massdrivercloud/mcp-server`.
+
+Verify with `/mcp` in Claude Code — the `massdriver` server should be listed with its tools.
+
+**Troubleshooting:**
+- Server shows as failed → the launcher prints the exact reason to stderr (visible via `claude --debug` or the `/plugin` Errors tab): Docker not installed, daemon not running, or missing credentials in the shell that launched Claude Code.
+- On native Windows (non-WSL), the launcher requires bash — run Claude Code inside WSL, or override the `massdriver` server in your project `.mcp.json` with a plain `docker` command.
 
 ## Commands
 
@@ -31,12 +56,12 @@ Interactive workflow for creating and testing bundles with deploy loop and compl
 **What it does:**
 1. Gathers your design intent (UX, constraints, connections)
 2. Scaffolds the bundle with best practices
-3. Sets up project + ephemeral test environment (`<project>-agent<SUFFIX>`)
-4. Adds the bundle as a component in the project's blueprint (`mass component add`)
-5. Pins the test instance to the `development` release channel
-6. Runs deploy loop: `mass instance deploy --params=... --follow`, then surgical `--patch` edits
+3. Sets up project + ephemeral test environment (MCP `create_project` / `create_environment`)
+4. Adds the bundle as a component in the project's blueprint (MCP `add_component`)
+5. Pins the test instance to the development channel (MCP `update_instance`, version `latest+dev`)
+6. Runs deploy loop: MCP `create_deployment` + `get_deployment_logs follow:true`, republishing via CLI as code changes
 7. Remediates compliance findings automatically
-8. Journals results in environment description (`mass environment update --description`)
+8. Journals results in the environment description (MCP `update_environment`)
 
 ### `/massdriver:test-upgrade` - Day 2 Upgrade Testing
 
@@ -49,11 +74,11 @@ Validate bundle version upgrades by forking the production environment and copyi
 Instance slugs follow the v2 format `{project}-{environment}-{component}`.
 
 **What it does:**
-1. Forks the source instance's environment via the `forkEnvironment` GraphQL mutation (no CLI verb yet — UI or GraphQL)
-2. Seeds the forked instance(s) using `copyInstance` (you can override fields, opt into copying secrets/remote refs)
-3. Deploys the current version as a baseline
-4. Bumps version with `mass instance version <slug>@<target>` and redeploys
-5. Reports success/failure with recommendations
+1. Forks the source instance's environment with `fork_environment`, carrying prod's component config (secrets/remote refs/env defaults opt-in)
+2. Verifies the mirror with `compare_environments`, low-scaling non-critical dependencies via `copy_instance` overrides
+3. Deploys the current version as a baseline (`create_deployment`)
+4. Bumps the version (`update_instance`), redeploys, and audits the change with `compare_deployments`
+5. Reports success/failure with recommendations (including `rollback_deployment` as the day-2 escape hatch), then tears down with `decommission_environment`
 
 ### `/massdriver:gen` - Quick Scaffolding
 
@@ -63,26 +88,28 @@ Generate a bundle without the deploy loop.
 /massdriver:gen RDS MySQL for OLTP workloads
 ```
 
-## What's New in v2
+## How It Works
 
-If you're coming from this plugin's v3.x (which targeted Massdriver v1), the major shifts:
+The plugin drives the Massdriver control plane through the official MCP server (100 tools):
 
-- **Project blueprints**: Bundles are added to a project's blueprint once via `mass component add`. Every environment auto-gets an instance.
-- **`mass instance deploy`**: One command for config + deploy + log streaming (`--params`, `--patch`, `--follow`). Replaces `mass pkg cfg` + `mass pkg deploy` + `mass logs`.
-- **CLI-first lifecycle**: Project + environment creation, blueprint composition (`mass component add|link`), and the dev server (`mass server`) are all CLI now.
-- **Lowercase release channels**: `--release-channel development` (or `stable`). The old `latest+dev` / `~X.Y+dev` strings are gone.
-- **Renames**: `pkg` → `instance`, `def` → `resource-type`, `artifact` → `resource`, `env` → `environment`, `mass logs` → `mass deployment logs`. Old verbs work as aliases for now but new code should use the new names.
+- **Deploys**: `create_deployment` (`PROVISION`/`PLAN`/`DECOMMISSION`) + `get_deployment_logs` with `follow: true`. Params travel with each deployment call.
+- **Blueprint composition**: `add_component` / `link_components` — components are added once at the project level; every environment auto-gets an instance.
+- **Day 2 operations**: deployment approval flow (`propose_deployment` → human approves), `rollback_deployment`, `plan_deployment`, `compare_environments`, `compare_deployments`, instance secrets, remote references.
+- **Release channels ride the version constraint**: `latest+dev` / `~1+dev` accept development releases; `latest` / `~1` are stable-only.
+- **Environment-scale operations**: `fork_environment` (test envs from prod), `deploy_environment` / `decommission_environment` (whole-environment waves in dependency order), `copy_instance` (config mirroring with overrides).
+- **The CLI handles filesystem work**: `mass bundle build|lint|new|publish|pull`, `mass resource-type publish|get|list`, and `mass server`.
 
 ## What This Plugin Does
 
 This plugin helps platform engineers create and test Massdriver v2 bundles — reusable IaC modules that package OpenTofu, Terraform, or Helm with input schemas, resource type contracts, and operational policies.
 
 **Capabilities:**
+- **MCP-native operations**: Auto-registers the Massdriver MCP server; all control-plane work uses typed tools instead of shelling out
 - **Interactive development**: Full deploy loop with compliance remediation
-- **Upgrade testing**: Validate version upgrades against production configs (via fork + copyInstance)
-- **Safety guardrails**: Blocks non-development publishes and production-targeting writes
+- **Upgrade testing**: Validate version upgrades against production configs (`fork_environment` + `copy_instance`, verified with `compare_environments`)
+- **Safety guardrails**: Blocks non-development publishes and production-targeting writes — across BOTH `mass` CLI commands and MCP tool calls, including automated deployment approval
 - **Compliance automation**: Iterates until Checkov findings are resolved
-- **GraphQL v2 integration**: Reference for operations not yet in the CLI (forkEnvironment, copyInstance, deployment approval flow, instance secrets)
+- **GraphQL v2 reference**: Multi-entity queries for when one query beats a chain of tool calls
 
 ## When It Activates
 
@@ -101,6 +128,9 @@ claude-plugins/
 └── massdriver/
     ├── .claude-plugin/
     │   └── plugin.json
+    ├── .mcp.json                   # Points at the MCP launcher script
+    ├── scripts/
+    │   └── run-mcp-server.sh       # Runs the Massdriver MCP server via Docker
     ├── agents/
     │   ├── bundle-dev.md           # Full development workflow (v2)
     │   └── upgrade-tester.md       # Day 2 upgrade testing (v2)
@@ -109,27 +139,29 @@ claude-plugins/
     │   ├── test-upgrade.md         # /massdriver:test-upgrade
     │   └── gen.md                  # /massdriver:gen
     ├── hooks/
-    │   └── hooks.json              # Safety guardrails (v2 command surface)
+    │   └── hooks.json              # Safety guardrails (CLI + MCP tool calls)
     ├── templates/
     │   └── massdriver.local.md     # Settings template
     └── skills/
         └── massdriver/
             ├── SKILL.md            # Core knowledge (v2 mental model + workflows)
             ├── PATTERNS.md         # Bundle and resource type examples
+            ├── snippets/           # Copy-paste templates
             └── references/
-                ├── graphql.md      # GraphQL v2 API operations
+                ├── graphql.md      # GraphQL multi-entity queries
                 ├── alarms.md       # AWS/GCP/Azure monitoring
                 └── compliance.md   # Checkov remediation
 ```
 
 ## Safety Guardrails
 
-The plugin includes automatic safety hooks that **hard block**:
+The plugin includes automatic safety hooks covering **both the CLI and the MCP tools**, which **hard block**:
 
 - `mass bundle publish` without the `--development` (`-d`) flag
-- Any v2 command targeting a production environment, including `mass instance deploy|destroy|version`, `mass environment update`, `mass component remove` against a prod instance, etc.
+- Any CLI command or MCP mutation targeting a production environment: `create_deployment` / `propose_deployment` (`PROVISION` and `DECOMMISSION`), `update_instance`, instance secrets, remote references, `update_environment` / `delete_environment`, environment defaults, and prod-referencing resource mutations. **Plans are exempt** — `PLAN` deployments and `mass instance deploy --plan` are dry-runs and allowed on any environment, including production.
+- `approve_deployment` — always, regardless of target. Approving proposed deployments (including rollbacks) is a human authorization step; agents can propose, humans approve in the UI.
 
-Read-only operations (`mass instance get`, `mass deployment logs`, `mass resource get|download`, etc.) are always allowed regardless of environment.
+Read-only operations (`get_*`, `list_*`, `compare_*`, `export_resource`, `get_deployment_logs`) are always allowed regardless of environment. Non-applying tools (`plan_deployment`, `rollback_deployment`, `reject_deployment`, `abort_deployment`) are allowed since they cannot change infrastructure without a human approval.
 
 ## Configuration
 
@@ -146,9 +178,9 @@ default_test_project: ""
 
 | Setting | Description |
 |---------|-------------|
-| `mass_profile` | CLI profile from `~/.config/massdriver/config.yaml` |
-| `production_pattern` | Regex to identify production environments (protected) |
-| `organization_id` | Default org ID (optional, used when running raw GraphQL mutations) |
+| `mass_profile` | Profile from `~/.config/massdriver/config.yaml`, used by the `mass` CLI. The MCP server reads the same file (mounted into its container) via `MASSDRIVER_PROFILE` |
+| `production_pattern` | Regex to identify production environments (protected by hooks on both CLI and MCP calls) |
+| `organization_id` | Default org ID (optional, used when running raw GraphQL queries; the MCP server gets its org from its own env/profile) |
 | `default_test_project` | Where to create test environments (optional) |
 
 See `massdriver/templates/massdriver.local.md` for full documentation.
@@ -186,9 +218,10 @@ The agent will ask about your production naming convention, what to copy from pr
 
 ## Requirements
 
-- [Massdriver CLI v2](https://docs.massdriver.cloud/cli/overview) (`mass`)
+- Docker (runs the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server) — see Installation)
+- [Massdriver CLI v2](https://docs.massdriver.cloud/cli/overview) (`mass`) — for bundle/resource-type publishing and local builds
 - OpenTofu or Terraform
-- A Massdriver account with CLI credentials configured
+- A Massdriver account, with either an API key exported (`MASSDRIVER_API_KEY` + `MASSDRIVER_ORGANIZATION_ID`) or a profile in `~/.config/massdriver/config.yaml`
 
 ## Learn More
 

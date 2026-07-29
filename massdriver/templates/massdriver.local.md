@@ -6,13 +6,15 @@
 #
 # These settings customize how the Massdriver plugin behaves.
 
-# CLI profile to use (from ~/.config/massdriver/config.yaml)
+# Profile to use (from ~/.config/massdriver/config.yaml)
+# Used by the `mass` CLI for publish/build steps.
 # The agent will ask you at session start, but you can pre-set it here.
 # Leave blank to use default profile.
 mass_profile: ""
 
 # Regex pattern to identify production environments
-# The plugin will BLOCK any commands targeting environments matching this pattern
+# The plugin will BLOCK any CLI commands OR MCP tool calls targeting
+# environments matching this pattern
 # Examples:
 #   - "prod" matches: myapp-prod-db, production, prod-east
 #   - "(prod|production)" matches: prod OR production
@@ -30,12 +32,13 @@ This file configures the Massdriver plugin for this project (v2).
 
 ## Production Protection
 
-Environments matching the `production_pattern` above are protected:
-- Cannot deploy instances in them (`mass instance deploy|destroy|version`)
-- Cannot mutate the environment record (`mass environment update`)
+Environments matching the `production_pattern` above are protected across BOTH the `mass` CLI and the Massdriver MCP tools:
+- Cannot create `PROVISION` or `DECOMMISSION` deployments against them (`PLAN` dry-runs are allowed — they don't alter infrastructure)
+- Cannot mutate instances (`update_instance`, secrets, remote references) or the environment record (`update_environment`, `delete_environment`, defaults)
 - Cannot remove components/resources tied to a prod instance
+- `approve_deployment` is always blocked — approving proposed deployments is human-only
 
-Read-only operations (`mass instance get`, `mass deployment logs`, `mass resource get|download`, etc.) are always allowed.
+Read-only operations (`get_*`, `list_*`, `compare_*`, `get_deployment_logs`, `export_resource`, etc.) are always allowed.
 
 ## Test Environment Naming
 

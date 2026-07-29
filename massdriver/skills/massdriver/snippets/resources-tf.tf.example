@@ -1,7 +1,5 @@
 # Resource Publishing Template
 # Create one massdriver_resource for each entry in massdriver.yaml's artifacts: section.
-# (massdriver.yaml keeps the `artifacts:` key in v2; the v2 Terraform provider exposes
-# them as `massdriver_resource` HCL resources.)
 
 resource "massdriver_resource" "my_resource" {
   # field: Must exactly match the property name in massdriver.yaml artifacts section

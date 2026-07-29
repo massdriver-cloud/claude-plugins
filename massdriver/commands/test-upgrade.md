@@ -15,11 +15,11 @@ Start the upgrade-tester agent to validate a bundle version upgrade against prod
 ## What This Does
 
 1. **Identify instance** - Instance slug specifies exactly which bundle deployment to clone (e.g., `api-prod-database`)
-2. **Fork environment** - Create isolated test environment via the `forkEnvironment` GraphQL mutation (no CLI verb yet)
-3. **Seed config** - Use `copyInstance` (GraphQL) to mirror prod config onto the forked instance
-4. **Adjust scale** - Optionally use `copyInstance` `overrides` to reduce non-critical dependency sizes
-5. **Baseline deploy** - `mass instance deploy <slug> --message "Baseline" --follow`
-6. **Upgrade** - `mass instance version <slug>@<target>` then `mass instance deploy <slug> --message "Upgrade test" --follow`
+2. **Fork environment** - `fork_environment` creates an isolated test environment carrying prod's component config (secrets/refs/defaults opt-in)
+3. **Verify the mirror** - `compare_environments` between prod and the fork
+4. **Adjust scale** - Optionally `copy_instance` with `overrides` to reduce non-critical dependency sizes
+5. **Baseline deploy** (MCP) - `create_deployment` + `get_deployment_logs follow:true`
+6. **Upgrade** (MCP) - `update_instance` to the target version, redeploy, then audit with `compare_deployments`
 7. **Report results** - Summary of upgrade success/failure with recommendations
 
 ## Usage
