@@ -71,7 +71,7 @@ Validate bundle version upgrades by forking the production environment and copyi
 /massdriver:test-upgrade api-prod-database 1.3.0
 ```
 
-Instance slugs follow the v2 format `{project}-{environment}-{component}`.
+Instance identifier format `{project}-{environment}-{component}`.
 
 **What it does:**
 1. Forks the source instance's environment with `fork_environment`, carrying prod's component config (secrets/remote refs/env defaults opt-in)
