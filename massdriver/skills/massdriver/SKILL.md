@@ -391,7 +391,7 @@ Is this resource...
 
 Massdriver validates `massdriver.yaml` against:
 - Bundles: https://api.massdriver.cloud/json-schemas/bundle.json
-- Resource Types: https://api.massdriver.cloud/json-schemas/artifact-definition.json
+- Resource Types: https://api.massdriver.cloud/json-schemas/resource-type.json
 
 ---
 
