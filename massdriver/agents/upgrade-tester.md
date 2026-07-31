@@ -32,6 +32,8 @@ whenToUse: |
   Version validation against specific instance config triggers upgrade testing.
   </commentary>
   </example>
+skills:
+  - massdriver
 model: sonnet
 ---
 

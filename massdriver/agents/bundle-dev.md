@@ -33,6 +33,8 @@ whenToUse: |
   Bundle modification also triggers this agent for the test loop.
   </commentary>
   </example>
+skills:
+  - massdriver
 model: sonnet
 ---
 
