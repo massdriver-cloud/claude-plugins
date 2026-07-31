@@ -161,7 +161,7 @@ This is needed for the `halt_on_failure` expression in the bundle's steps config
 
 **Schema References**: Validate `massdriver.yaml` against:
 - Bundles: https://api.massdriver.cloud/json-schemas/bundle.json
-- Resource Types: https://api.massdriver.cloud/json-schemas/artifact-definition.json (URL keeps the legacy name; the document is the v2 schema)
+- Resource Types: https://api.massdriver.cloud/json-schemas/artifact-definition.json
 
 Fetch these schemas with WebFetch when you need to confirm required fields.
 

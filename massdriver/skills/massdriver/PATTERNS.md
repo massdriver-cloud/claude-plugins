@@ -3,7 +3,7 @@
 Complete examples for bundles, resource types, and platforms. Use these for copy-paste and learning.
 
 > **Naming note:**
-> - Schema contracts are **resource types**, and they live in `resource-type/<name>/massdriver.yaml`. Some existing repositories (e.g. the catalog) use an `artifact-definitions/` directory instead — both work; new bundles should use `resource-type/`.
+> - Schema contracts are **resource types**, and they live in `resource-type/<name>/massdriver.yaml`.
 > - The Terraform provider's HCL resource is `massdriver_resource`.
 > - The bundle YAML keeps the section keys `params:`, `connections:`, and `artifacts:` — those are unchanged.
 > - At runtime they are "resources" (MCP tools `get_resource` / `export_resource` / `create_resource`). The "artifact" you write in HCL becomes a "resource" at deploy time.
@@ -370,7 +370,7 @@ ui:
 
 ## Resource Type Patterns (a.k.a. Artifact Definitions)
 
-Resource types live in `resource-type/<name>/massdriver.yaml` (legacy repos may use `artifact-definitions/` — both are accepted). They define schema contracts for data passed between bundles.
+Resource types live in `resource-type/<name>/massdriver.yaml`. They define schema contracts for data passed between bundles.
 
 **Directory structure:**
 ```
