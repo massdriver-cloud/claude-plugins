@@ -33,7 +33,7 @@ Interactive workflow for creating and testing bundles with deploy loop and compl
 2. Scaffolds the bundle with best practices
 3. Sets up project + ephemeral test environment (`<project>-agent<SUFFIX>`)
 4. Adds the bundle as a component in the project's blueprint (`mass component add`)
-5. Pins the test instance to the `development` release channel
+5. Pins the test instance to development releases (`@latest+dev`)
 6. Runs deploy loop: `mass instance deploy --params=... --follow`, then surgical `--patch` edits
 7. Remediates compliance findings automatically
 8. Journals results in environment description (`mass environment update --description`)
@@ -82,7 +82,7 @@ If you're coming from this plugin's v3.x (which targeted Massdriver v1), the maj
 - **Project blueprints**: Bundles are added to a project's blueprint once via `mass component add`. Every environment auto-gets an instance.
 - **`mass instance deploy`**: One command for config + deploy + log streaming (`--params`, `--patch`, `--follow`). Replaces `mass pkg cfg` + `mass pkg deploy` + `mass logs`.
 - **CLI-first lifecycle**: Project + environment creation, blueprint composition (`mass component add|link`), and the dev server (`mass server`) are all CLI now.
-- **Lowercase release channels**: `--release-channel development` (or `stable`). The old `latest+dev` / `~X.Y+dev` strings are gone.
+- **Release pinning via version string**: `mass instance version <slug>@latest+dev` tracks development releases, `@latest` tracks stable. (There is no `--release-channel` flag — help text suggesting one is stale.)
 - **Renames**: `pkg` → `instance`, `def` → `resource-type`, `artifact` → `resource`, `env` → `environment`, `mass logs` → `mass deployment logs`. Old verbs work as aliases for now but new code should use the new names.
 
 ## What This Plugin Does

@@ -117,7 +117,7 @@ Workflow:
 3. **Scaffold**: Generate bundle code
 4. **Publish**: `mass bundle publish --development` (and `mass resource-type publish` for any new resource types)
 5. **Add to blueprint**: `mass component add <project> <bundle> --id <component-id>` (once per project)
-6. **Pin release channel**: `mass instance version <project>-<env>-<component>@latest --release-channel development`
+6. **Pin dev releases**: `mass instance version <project>-<env>-<component>@latest+dev`
 7. **Deploy**: `mass instance deploy <slug> --params=/tmp/params.json --message "..." --follow`
 8. **Iterate**: Code → publish → `mass instance deploy --patch ...` → fix → repeat
 9. **Compliance**: Remediate Checkov findings
@@ -226,6 +226,9 @@ Understand compliance requirements:
 
 6. **PUBLISH** — the platform cannot read your local files:
    ```bash
+   # First publish only: create the OCI repo, named exactly like the bundle
+   mass repository create <bundle-name> -t bundle
+
    mass bundle publish --development
    ```
 
@@ -252,8 +255,10 @@ mass component link <project>-<from-component>.<from-field> \
 **Initial deploy in a target environment:**
 
 ```bash
-# Pin the instance to development releases so it picks up `--development` publishes
-mass instance version <project>-<env>-<component>@latest --release-channel development
+# Pin the instance to development releases so it picks up `--development` publishes.
+# The channel is part of the version string (`+dev` build-metadata suffix).
+# NOTE: the `--release-channel` flag that appears in some CLI help is STALE — it does not exist.
+mass instance version <project>-<env>-<component>@latest+dev
 
 # Build the params file from your preset
 cat > /tmp/params.json <<'EOF'
@@ -267,7 +272,9 @@ mass instance deploy <project>-<env>-<component> \
   --follow
 ```
 
-`--follow` streams logs to stdout until the deployment completes. If you forget it (or want logs after the fact):
+`--follow` streams logs to stdout until the deployment completes — but the watcher can give up
+before long deploys finish. Do NOT trust its exit code as a completion signal: poll
+`mass deployment get <id>` until a terminal status. If you forget `--follow` (or want logs after the fact):
 
 ```bash
 mass deployment list <project>-<env>-<component>            # most recent first
@@ -504,6 +511,15 @@ terraform {
 ### 6. Resource Types and Providers Are 1:1
 Always `mass resource-type get <platform-name>` before writing a provider block. The provider must use ONLY the fields from the credential resource type's schema.
 
+### 7. SaaS Provisioner Constraints (HARD)
+The platform's provisioner cannot run arbitrary local code. In bundle IaC:
+- **No `null_resource`** / `terraform_data` with provisioners
+- **No `data "external"`**
+- **No shelling out** to `python3` or any other binary
+
+Use provider-native attributes instead. Example: SES SMTP passwords come from
+`aws_iam_access_key.<name>.ses_smtp_password_v4` — not a derivation script.
+
 ---
 
 ## File Responsibilities
@@ -642,7 +658,11 @@ locals {
 
 ## Checkov Security Configuration
 
-Use `src/.checkov.yml` (inline comments don't work):
+**Sequence: get deploys green first, then work compliance findings.** Don't block a failing
+deploy on Checkov remediation.
+
+Skips live ONLY in `src/.checkov.yml` — inline `# checkov:skip=` comments are ignored by the
+platform:
 
 ```yaml
 skip-check:
@@ -674,7 +694,7 @@ A skipped check is skipped EVERYWHERE — `halt_on_failure` does NOTHING for ski
 - Check targets infrastructure that is by design (e.g., SG egress for AWS service connectivity, public IPs on public subnets)
 - Check requires infrastructure outside the bundle's scope (e.g., Lambda rotator for secret rotation)
 
-**NEVER skip a check for something configurable via params** (e.g., multi-AZ, deletion protection, enhanced monitoring, TLS, automatic failover). If a user can toggle it, let checkov flag it naturally. `halt_on_failure` enforces compliance in production while giving users freedom in non-prod.
+**NEVER skip a check for something configurable via params** (e.g., multi-AZ, deletion protection, enhanced monitoring, TLS, automatic failover). If a user can toggle it, let checkov flag it naturally. `halt_on_failure` enforces compliance in production while giving users freedom in non-prod. Skipping a param-driven check requires explicit human direction — never do it on your own judgment.
 
 **Invalid reasons to skip:**
 - "Dev preset has it disabled for cost savings" — NO, the bundle runs in prod too
@@ -712,8 +732,10 @@ Before publishing:
 | artifacts.tf field mismatch | Ensure `field = "X"` matches `artifacts.properties.X` |
 | Publishing stable during development | Use `--development` flag always until production-ready |
 | Forgot to publish after code change | Platform can't read local files — always publish |
-| Instance not picking up new release after publish | Set release channel: `mass instance version <slug>@latest --release-channel development` |
-| Used v1 release-channel string `latest+dev` | v2 wants `--release-channel development` (lowercase, no `+dev` suffix) |
+| Instance not picking up new release after publish | Pin to dev releases: `mass instance version <slug>@latest+dev` |
+| Used the `--release-channel` flag | It doesn't exist (stale help text) — the channel is part of the version string: `@latest+dev` for development, `@latest` for stable |
+| Deployed right after a schema-changing republish | Re-pin and verify the instance advanced first (`mass instance get <slug> -o json`) — a stale instance validates against the OLD schema ("Required property X was not present" at deploy creation) |
+| First publish fails (no repository) | Create the OCI repo first: `mass repository create <name> -t bundle\|resource-type` — repo name must equal the artifact name exactly |
 | Tried `mass pkg create` to add to canvas | v2: `mass component add <project> <bundle> --id <comp>` once at the project level |
 | Tried `mass pkg cfg` to set params | v2: pass `--params=` (or `--patch=`) directly to `mass instance deploy` |
 | Used `mass logs` | v2: `mass deployment logs <id>`, or `mass instance deploy --follow` to stream live |
@@ -734,7 +756,11 @@ Before publishing:
 
 **After ANY change, you MUST publish.** The platform has no access to your local filesystem — changes don't exist until you publish.
 
-After publishing a new bundle release, instances on the `development` release channel auto-resolve to it. To force a redeploy of the new release without changing config:
+**First publish requires an OCI repository.** Every bundle AND resource type needs one before its
+first publish: `mass repository create <name> -t bundle|resource-type`. The repository name must
+equal the artifact name exactly, and bundles + resource types share a single namespace.
+
+After publishing a new bundle release, instances pinned to `@latest+dev` auto-resolve to it. To force a redeploy of the new release without changing config:
 
 ```bash
 mass instance deploy <project>-<env>-<component> --message "Pick up new release" --follow
@@ -780,7 +806,9 @@ mass component remove <project>-<comp-id>
 mass component unlink <link-uuid>
 
 # Instance lifecycle (per environment)
-mass instance version <project>-<env>-<comp>@latest --release-channel development
+mass instance version <project>-<env>-<comp>@latest+dev     # track development releases
+mass instance version <project>-<env>-<comp>@latest          # track stable releases
+mass instance version <project>-<env>-<comp>@1.2.3           # pin exact version
 mass instance deploy <project>-<env>-<comp> --params=/tmp/params.json --message "..." --follow
 mass instance deploy <project>-<env>-<comp> --patch '.field = value' --message "..." --follow
 mass instance deploy <project>-<env>-<comp> --message "Redeploy with last config" --follow

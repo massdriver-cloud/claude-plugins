@@ -232,6 +232,10 @@ development channel:
 cd bundles/<app-bundle>
 mass bundle build
 mass bundle lint
+
+# First publish only: the OCI repository must exist, named EXACTLY like the bundle
+mass repository create <app-bundle> -t bundle
+
 mass bundle publish --development       # NEVER stable without explicit human authorization
 
 # Add it to the project blueprint once, then wire any links / remote references
@@ -271,7 +275,7 @@ Promote the app up the environment ladder **only as far as the user's permission
 
 1. **Deploy in dev first**, pinned to the development channel:
    ```bash
-   mass instance version <project>-dev-<comp>@latest --release-channel development
+   mass instance version <project>-dev-<comp>@latest+dev
    mass instance deploy <project>-dev-<comp> --params=/tmp/params.json --message "Initial dev deployment" --follow
    ```
 2. **Watch logs + compliance** (Checkov findings stream with `--follow`). Remediate before promoting.

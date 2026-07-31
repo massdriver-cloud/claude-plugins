@@ -178,6 +178,10 @@ Based on requirements, create:
    - Provider configuration (see **Provider Configuration** below)
    - Resource definitions
    - `massdriver_resource` HCL resources matching the YAML's `artifacts:` schema (in v2 the provider's resource was renamed from `massdriver_artifact` to `massdriver_resource`; the bundle YAML key stayed as `artifacts:`)
+   - **SaaS provisioner constraints (HARD)**: no `null_resource`, no `data "external"`, no
+     shelling out to `python3` or other binaries — the platform's provisioner cannot run local
+     code. Use provider-native attributes (e.g. SES SMTP passwords come from
+     `aws_iam_access_key.<name>.ses_smtp_password_v4`, not a derivation script).
 
 **operator.md**: write it as an engineer-facing runbook — no templating-context meta, no config
 snapshot tables (the product shows config in its own panel), no explainer headings ("At a
@@ -245,6 +249,10 @@ Do this EVERY time. No exceptions.
 This is **once per (project, bundle) pair**. After this, every environment in the project automatically gets an instance.
 
 ```bash
+# First publish only: the OCI repository must exist, named EXACTLY like the bundle.
+# (Bundles and resource types share one namespace; resource types use -t resource-type.)
+mass repository create <bundle-name> -t bundle
+
 mass bundle publish --development
 
 # Add the bundle as a component in the project blueprint
@@ -270,10 +278,12 @@ mass component link <project>-<from-comp>.<from-field> \
 This is mandatory once per (env, component). Without it, the instance won't pick up `--development` publishes.
 
 ```bash
-mass instance version <project>-<env>-<component>@latest --release-channel development
+mass instance version <project>-<env>-<component>@latest+dev
 ```
 
-The release channel is `development` or `stable` (lowercase). The v1 strings `latest+dev` / `~X.Y+dev` are gone.
+The channel is part of the version string: `@latest+dev` tracks development releases, `@latest`
+tracks stable, `@1.2.3` pins exact. The `--release-channel` flag that appears in some CLI help
+is STALE — it does not exist; do not use it.
 
 ### Step 2: Build the params file
 
@@ -292,7 +302,9 @@ mass instance deploy <project>-<env>-<component> \
   --follow
 ```
 
-`--follow` streams logs to stdout until the deployment completes. If you forget it (or want logs after the fact):
+`--follow` streams logs until the deployment completes — but the watcher can give up before long
+deploys finish. Do NOT trust its exit code as a completion signal: poll `mass deployment get <id>`
+until a terminal status. If you forget `--follow` (or want logs after the fact):
 
 ```bash
 mass deployment list <project>-<env>-<component> --limit 5
@@ -311,6 +323,11 @@ This is the core iteration cycle. v2 collapses what was three commands in v1 (`m
 
 # 2. ALWAYS publish after changes
 mass bundle publish --development
+
+# 2a. If the params/connections SCHEMA changed: verify the instance advanced to the
+#     new release BEFORE deploying (a stale instance validates against the old schema
+#     and fails with "Required property X was not present" at deploy creation):
+mass instance get <slug> -o json    # check the resolved release/version advanced; re-pin @latest+dev if not
 
 # 3. Redeploy. Three flavors depending on what you need:
 
@@ -348,7 +365,8 @@ Run until all pass:
 
 ### Compliance Remediation
 
-When Checkov findings appear in logs:
+**Get deploys green first, then work compliance.** Don't block a failing deploy on Checkov
+remediation. When findings appear in logs:
 
 1. **Extract and categorize** by severity (HIGH/MEDIUM/LOW)
 2. **Apply remediation strategy** from Phase 1:
@@ -371,7 +389,7 @@ In v2 a component yields one instance per environment. To test a different param
 - **Spin up another environment** and deploy there (heavier but cleaner separation):
   ```bash
   mass environment create <project>-agentvariant
-  mass instance version <project>-agentvariant-<comp>@latest --release-channel development
+  mass instance version <project>-agentvariant-<comp>@latest+dev
   mass instance deploy <project>-agentvariant-<comp> --params=/tmp/variant.json --message "Variant test" --follow
   ```
 

@@ -37,7 +37,7 @@ You are a Massdriver v2 Day 2 operations specialist. Your job is to safely test 
 In v2, instances live inside environments and are slugged `<project>-<env>-<component>`. Forking an environment creates a new env with the same components but **blank instances** — params are not copied automatically. To seed the test instance with prod config, use the `copyInstance` GraphQL mutation (no CLI verb yet).
 
 Key v2 commands you'll use:
-- `mass instance version <slug>@<target> --release-channel development` — set version
+- `mass instance version <slug>@<target>` — set version (`@latest+dev` to track development releases; the `--release-channel` flag in CLI help is stale — it doesn't exist)
 - `mass instance deploy <slug> --message "..." --follow` — deploy with log streaming
 - `mass deployment logs <id>` — fetch logs after the fact
 - GraphQL `forkEnvironment` (no CLI), `copyInstance` (no CLI), `setInstanceSecret` (no CLI)
@@ -202,9 +202,10 @@ mutation {
 
 Deploy at the **current** version first to establish a baseline.
 
-1. **Pin instances to the development release channel** so they pick up `--development` publishes:
+1. **Pin instances to development releases** so they pick up `--development` publishes (the
+   channel is the `+dev` build-metadata suffix in the version string):
    ```bash
-   mass instance version <project>-${AGENT_ENV}-<component>@latest --release-channel development
+   mass instance version <project>-${AGENT_ENV}-<component>@latest+dev
    # Repeat for any dependency components
    ```
 
@@ -226,8 +227,8 @@ Deploy at the **current** version first to establish a baseline.
 
 1. **Set version to target**:
    ```bash
-   mass instance version <project>-${AGENT_ENV}-<test-component>@<target-version> \
-     --release-channel development
+   mass instance version <project>-${AGENT_ENV}-<test-component>@<target-version>
+   # Append +dev (e.g. @1.3.0+dev) if the target is a development release
    ```
 
 2. **Deploy upgrade**:

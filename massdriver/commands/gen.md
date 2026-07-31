@@ -88,5 +88,6 @@ Tell the user:
 - Where the bundle was created
 - How to publish it: `mass bundle publish --development`
 - For new resource types, publish them first: `mass resource-type publish resource-type/<name>/massdriver.yaml` (no `--development` flag, goes live immediately)
-- To deploy in v2: add the bundle as a component once at the project level (`mass component add <project> <bundle> --id <comp-id>`), then per environment set `mass instance version <project>-<env>-<comp>@latest --release-channel development` and `mass instance deploy <slug> --params=... --message "..." --follow`
+- First publish needs an OCI repo named exactly like the bundle: `mass repository create <bundle-name> -t bundle` (resource types: `-t resource-type`)
+- To deploy in v2: add the bundle as a component once at the project level (`mass component add <project> <bundle> --id <comp-id>`), then per environment pin `mass instance version <project>-<env>-<comp>@latest+dev` and `mass instance deploy <slug> --params=... --message "..." --follow`
 - Suggest using `/massdriver:develop` if they want the full test loop
