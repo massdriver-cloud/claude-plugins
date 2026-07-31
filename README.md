@@ -2,7 +2,7 @@
 
 Build infrastructure bundles for [Massdriver](https://massdriver.cloud) v2 — the internal developer platform that turns infrastructure-as-code into reusable, self-service components with built-in guardrails.
 
-This plugin is **MCP-first**: all control-plane operations (projects, environments, components, deployments, resources) go through the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server), which the plugin registers automatically. The **v2 Massdriver CLI** (`mass`) is still required for filesystem-bound work — bundle build/lint/publish/pull and resource-type publishing. Not compatible with Massdriver v1.
+This plugin is **MCP-first**: all control-plane operations (projects, environments, components, deployments, resources) go through the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server), which the plugin registers automatically. The **Massdriver CLI** (`mass`) is still required for filesystem-bound work — bundle build/lint/publish/pull and resource-type publishing.
 
 ## Installation
 
