@@ -1,7 +1,7 @@
 {
   "name": "massdriver",
   "description": "Ship your own cloud infrastructure without filing a ticket. Engineers through vibe coders describe what their app needs, and Massdriver provisions it from the modules your platform team already approved, with cost, security, and compliance policy enforced on every deploy.",
-  "version": "5.1.0",
+  "version": "4.1.0",
   "author": {
     "name": "Massdriver",
     "url": "https://massdriver.cloud"
