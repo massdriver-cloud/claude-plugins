@@ -140,7 +140,7 @@ resource "massdriver_resource" "database" {
   field = "database"
   name  = "PostgreSQL ${var.md_metadata.name_prefix}"
 
-  artifact = jsonencode({
+  resource = jsonencode({
     id = aws_db_instance.main.id
     auth = {
       hostname = aws_db_instance.main.endpoint
