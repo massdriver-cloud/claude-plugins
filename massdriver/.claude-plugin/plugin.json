@@ -8,5 +8,25 @@
   },
   "repository": "https://github.com/massdriver-cloud/claude-plugins",
   "license": "Apache-2.0",
-  "keywords": ["infrastructure", "iac", "terraform", "opentofu", "bundles", "devops", "platform-engineering", "compliance", "checkov", "day2", "upgrades", "mcp"]
+  "keywords": [
+  "self-service",
+  "deploy",
+  "infrastructure",
+  "provisioning",
+  "internal-developer-platform",
+  "platform-engineering",
+  "golden-paths",
+  "service-catalog",
+  "policy-as-code",
+  "compliance",
+  "infrastructure-as-code",
+  "terraform",
+  "opentofu",
+  "helm",
+  "database",
+  "hosting",
+  "environments",
+  "preview-environments",
+  "massdriver"
+]
 }
