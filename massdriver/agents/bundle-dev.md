@@ -179,6 +179,12 @@ Based on requirements, create:
    - Resource definitions
    - `massdriver_resource` HCL resources matching the YAML's `artifacts:` schema (in v2 the provider's resource was renamed from `massdriver_artifact` to `massdriver_resource`; the bundle YAML key stayed as `artifacts:`)
 
+**operator.md**: write it as an engineer-facing runbook — no templating-context meta, no config
+snapshot tables (the product shows config in its own panel), no explainer headings ("At a
+glance", "X — what they mean"). Actionable sections only (symptom → diagnosis → fix, runnable
+commands), and wrap artifact/connection-sourced values in `{{#artifacts.<name>}}` guards so the
+runbook renders clean before first deploy.
+
 ### Provider Configuration (CRITICAL)
 
 **Resource types and Terraform providers are 1:1.** The provider block must be based on what the credential resource type schema looks like.

@@ -521,6 +521,28 @@ Always `mass resource-type get <platform-name>` before writing a provider block.
 
 ---
 
+## Operator Runbook (`operator.md`) Rules
+
+The runbook renders in the product with mustache templating (`slug`, `params`,
+`connections.<name>`, `artifacts.<name>`). It is engineer-facing operational documentation.
+
+1. **No meta content.** Never document the templating context, list which fields can be
+   interpolated, or include a "current configuration" snapshot table — the product has a config
+   panel next to the runbook. The runbook is procedures, not a mirror of the form.
+2. **Write for engineers.** No explainer or marketing headings ("At a glance",
+   "Active alarms — what they mean"). Section titles name the operation or failure mode:
+   "Rotate credentials", "Connection timeouts". Every section is symptom → diagnosis → fix
+   with runnable commands.
+3. **Guard interpolated values.** Artifact/connection data doesn't exist until after a
+   successful deploy. Wrap artifact-sourced sections in `{{#artifacts.<name>}}...{{/artifacts.<name>}}`
+   so the runbook renders clean pre-deploy instead of showing empty values.
+4. **Interpolate into commands.** `psql -h {{connections.database.auth.hostname}}` beats
+   "find the hostname in the console."
+
+See [snippets/operator-md.md](./snippets/operator-md.md) for the reference shape.
+
+---
+
 ## Common Patterns
 
 ### Provider Blocks Use Credential Resources

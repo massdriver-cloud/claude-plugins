@@ -2,78 +2,48 @@
 templating: mustache
 ---
 
-# Bundle Runbook
+# <Bundle Name> Runbook
 
-> **Templating**: This runbook supports mustache templating.
-> **Available context**: `slug`, `params`, `connections.<name>`, `artifacts.<name>`
+Operational procedures for `{{slug}}`. Every section is written for the engineer on call:
+symptom → diagnosis → fix, with runnable commands.
 
-## Instance Information
-
-**Slug:** `{{slug}}`
-
-## Configuration
-
-| Setting | Value |
-|---------|-------|
-| Param 1 | `{{params.example_param}}` |
-
-## Connections
-
-{{#connections.network}}
-### Network
-
-- **ID:** `{{connections.network.id}}`
-- **CIDR:** `{{connections.network.cidr}}`
-{{/connections.network}}
-
-{{#connections.database}}
-### Database
-
-- **Host:** `{{connections.database.auth.hostname}}`
-- **Database:** `{{connections.database.auth.database}}`
-{{/connections.database}}
-
-## Artifacts
-
-{{#artifacts.my_artifact}}
-### My Artifact
-
-- **ID:** `{{artifacts.my_artifact.id}}`
-{{/artifacts.my_artifact}}
-
----
-
-## Common Operations
-
-[Add your operational procedures here]
-
-### Example: Connect to Resource
+## Health Check
 
 ```bash
-# Example command using artifact data
-echo "Connecting to {{artifacts.my_artifact.id}}"
+# Replace with the fastest command that proves this instance is healthy
+aws rds describe-db-instances --db-instance-identifier {{artifacts.my_artifact.id}} \
+  --query 'DBInstances[0].DBInstanceStatus'
 ```
 
-## Troubleshooting
+{{#connections.database}}
+## Connect to the Database
 
-### Issue: Connection Failed
+```bash
+psql -h {{connections.database.auth.hostname}} -d {{connections.database.auth.database}}
+```
+{{/connections.database}}
 
-1. Check network connectivity
-2. Verify credentials
-3. Check security group/firewall rules
+## Rotate Credentials
 
-### Issue: Permission Denied
+1. Exact steps an operator runs, with real commands.
+2. Interpolate live values into the commands rather than describing where to find them.
+3. End with a verification step.
 
-1. Verify IAM policies
-2. Check resource permissions
+## Failure Modes
 
----
+### Connection timeouts
 
-## Contacts
+1. Diagnosis: check security group / network path
+2. Fix
+3. Verify
+
+### Permission denied
+
+1. Diagnosis: verify IAM policies and resource permissions
+2. Fix
+3. Verify
+
+## Escalation
 
 - **Team**: Platform Engineering
 - **Slack**: #platform-support
-
----
-
-**Ready to customize?** Edit this file at `./bundles/<name>/operator.md`

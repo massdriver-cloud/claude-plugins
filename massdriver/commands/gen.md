@@ -66,6 +66,9 @@ bundles/<bundle-name>/
 - **Artifacts**: Match the resource type's schema exactly (the YAML key is still `artifacts:`; runtime calls them resources)
 - **Provider**: `mass resource-type get <platform>` FIRST, then write provider using only those fields — resource types and providers are 1:1
 - **Compliance**: Default to secure settings, add `halt_on_failure` for prod
+- **Runbook**: `operator.md` is engineer-facing — no templating-context meta or config snapshots
+  (the product has a config panel), no explainer headings; actionable ops sections with runnable
+  commands, artifact-sourced values wrapped in `{{#artifacts.<name>}}` guards
 
 ### 4. Local Validation
 
