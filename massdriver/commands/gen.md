@@ -62,7 +62,7 @@ bundles/<bundle-name>/
 
 - **Params**: Focus on 3-5 developer-facing questions, use presets
 - **80/20 rule**: Cover common use cases, don't over-generalize
-- **Connections**: Use existing resource types (`mass resource-type list`, ignore any `massdriver/` prefixed results)
+- **Connections**: Use existing resource types (`mass resource-type list`; ignore any `massdriver/` prefixed results)
 - **Artifacts**: Match the resource type's schema exactly (the YAML key is still `artifacts:`; runtime calls them resources)
 - **Provider**: `mass resource-type get <platform>` FIRST, then write provider using only those fields — resource types and providers are 1:1
 - **Compliance**: Default to secure settings, add `halt_on_failure` for prod
@@ -85,5 +85,5 @@ Tell the user:
 - Where the bundle was created
 - How to publish it: `mass bundle publish --development`
 - For new resource types, publish them first: `mass resource-type publish resource-type/<name>/massdriver.yaml` (no `--development` flag, goes live immediately)
-- To deploy in v2: add the bundle as a component once at the project level (`mass component add <project> <bundle> --id <comp-id>`), then per environment set `mass instance version <project>-<env>-<comp>@latest --release-channel development` and `mass instance deploy <slug> --params=... --message "..." --follow`
+- To deploy in v2: add the bundle as a component once at the project level (MCP `add_component`), then per environment pin the development channel (MCP `update_instance`, version `latest+dev`) and deploy (MCP `create_deployment` + `get_deployment_logs follow:true`)
 - Suggest using `/massdriver:develop` if they want the full test loop

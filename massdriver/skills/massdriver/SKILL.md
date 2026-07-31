@@ -5,7 +5,9 @@ description: Develop and test Massdriver v2 infrastructure bundles. Operates in 
 
 # Massdriver Bundle Development (v2)
 
-You are helping develop infrastructure bundles for Massdriver v2. This skill provides patterns, workflows, and reference material for bundle development against the v2 platform and CLI.
+You are helping develop infrastructure bundles for Massdriver v2. This skill provides patterns, workflows, and reference material for bundle development against the v2 platform.
+
+**Tooling hierarchy — MCP first.** Every control-plane operation (projects, environments, components, instances, deployments, resources) is a tool on the `massdriver` MCP server — the server's tool list and schemas are the reference; don't guess arguments, read them. The `mass` CLI is used ONLY for filesystem-bound work the MCP server can't touch (see CLI Reference at the bottom). The UI is only for first-time credential/secret bootstrapping and visual canvas inspection — hand the user a deep link with `get_url`. GraphQL is optional, for multi-entity queries only ([references/graphql.md](./references/graphql.md)).
 
 ## v2 Mental Model (read first)
 
@@ -18,7 +20,7 @@ Massdriver v2 separates **design time** from **deploy time**:
 - **Instance** — a deployed component in a specific environment. Slug is `<project>-<env>-<component>` (e.g. `ecomm-prod-db`).
 - **Resource** — the runtime output of an instance, conforming to a **resource type** (the schema contract). Bundles author "artifacts" in `massdriver.yaml`; those become resources at deploy time.
 
-This is the biggest shift from v1: v1 had `mass pkg create` per-environment to put a bundle on each env's canvas. v2 has `mass component add` once at the project — every environment auto-gets an instance for it.
+Components are added exactly once, at the project level (`add_component`) — never per environment. Every environment automatically gets an instance for every component.
 
 ## Quick Start
 
@@ -31,7 +33,7 @@ This is the biggest shift from v1: v1 had `mass pkg create` per-environment to p
 ## Reference Files
 
 - [PATTERNS.md](./PATTERNS.md) - Complete bundle and artifact examples
-- [references/graphql.md](./references/graphql.md) - GraphQL v2 API operations
+- [references/graphql.md](./references/graphql.md) - GraphQL multi-entity queries
 - [references/alarms.md](./references/alarms.md) - Adding monitoring alarms (AWS/GCP/Azure)
 - [references/compliance.md](./references/compliance.md) - Post-deployment Checkov remediation
 - [snippets/](./snippets/) - Copy-paste templates
@@ -40,11 +42,12 @@ This is the biggest shift from v1: v1 had `mass pkg create` per-environment to p
 
 1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
 2. **NEVER** configure or deploy to production environments
-3. **ALWAYS** use `-m "message"` (or `--message`) when running `mass instance deploy`
-4. **NEVER** use, mention, inspect, or reference `massdriver/` prefixed resource types, bundles, or anything else — they are from a deprecated public registry, are full of red herrings, and will never work. Pretend they do not exist. If they appear in CLI output, ignore them completely.
+3. **ALWAYS** pass a `message` when creating deployments (`create_deployment`, `propose_deployment`)
+4. **NEVER** use, mention, inspect, or reference `massdriver/` prefixed resource types, bundles, or anything else — they are from a deprecated public registry, are full of red herrings, and will never work. Pretend they do not exist. If they appear in tool output, ignore them completely.
 5. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
-6. **ALWAYS** watch deployment logs after every deploy (use `--follow` on `mass instance deploy`, or `mass deployment logs <id>` after the fact)
-7. **ALWAYS** ask the user for help if you encounter auth/credential/CLI issues — do NOT probe or guess
+6. **ALWAYS** watch deployment logs after every deploy (`get_deployment_logs` with `follow: true`)
+7. **ALWAYS** ask the user for help if you encounter auth/credential/tooling issues — do NOT probe or guess
+8. **NEVER** call `approve_deployment` — approving proposed deployments (including rollbacks) is a human authorization step. The safety hook blocks it.
 
 ## Deprecated `massdriver.yaml` Fields
 
@@ -52,23 +55,18 @@ Do NOT include these fields (they cause linter warnings):
 - `type` — Deprecated, remove entirely
 - `access` — Deprecated, remove entirely
 
-## CLI vs UI vs GraphQL Operations
+## Tool Boundaries
 
-**CLI Available:**
-- Project: `mass project create|get|list|update|delete|export`
-- Environment: `mass environment create|get|list|update|default|export`
-- Component (blueprint): `mass component add|update|remove|link|unlink`
-- Instance: `mass instance deploy|destroy|version|get|list|export`
-- Deployment: `mass deployment list|get|logs`
-- Resource: `mass resource create|get|update|download`
-- Resource Type: `mass resource-type publish|get|list|delete` (aliases: `def`, `definition`, `artdef`, `rt`)
-- Bundle: `mass bundle build|publish|new|create|get|list|pull|lint|import|template`
-- Repository: `mass repository create|get|list|update|delete`
+**MCP:** every control-plane operation is an MCP tool — the server's tool list and schemas are the reference; don't guess arguments, read them.
+
+**CLI only (filesystem-bound — the MCP server cannot touch local files):**
+- Bundle lifecycle: `mass bundle build|lint|new|publish|pull|import|template`
+- Resource types: `mass resource-type publish|get|list`
 - Local dev: `mass server`, `mass schema validate|dereference`, `mass whoami`
 
-**UI Only:** Manifest linking is now CLI (`mass component link`), but you'll still go to the UI for credential/secret bootstrapping the first time, environment description journaling, and visual canvas inspection.
+**UI Only:** first-time credential/secret bootstrapping and visual canvas inspection. Use `get_url` to hand the user a deep link.
 
-**GraphQL Only (v2 mutations not in CLI):** `forkEnvironment`, `deleteEnvironment`, `cloneProject`, `copyInstance`, `setInstanceSecret`, `removeInstanceSecret`, `orphanInstance`, deployment approval flow (`proposeDeployment` / `approveDeployment` / `rejectDeployment` / `abortDeployment`), `setRemoteReference`, `setComponentPosition`. See [references/graphql.md](./references/graphql.md).
+**GraphQL:** nothing requires it. Use it only when one query spanning several entities beats a chain of tool calls. See [references/graphql.md](./references/graphql.md).
 
 ---
 
@@ -78,31 +76,27 @@ Do NOT include these fields (they cause linter warnings):
 
 ### Credentials/Profile
 
-Ask the user which Massdriver CLI profile to use:
-- **Default profile**: No action needed, just use `mass` commands
-- **Alternate profile**: Set `export MASSDRIVER_PROFILE=<name>` before every `mass` command
+- **MCP auth**: verify connectivity with `get_viewer` — it returns the authenticated identity. If it fails, stop, report the exact error, and ask the user to fix their MCP setup.
+- **CLI profile** (needed for publish/build steps): ask which profile to use. Default profile needs no action; for an alternate profile set `export MASSDRIVER_PROFILE=<name>` before every `mass` command.
 
 ### Project & Environment
 
 In v2 you'll likely need both a **project** and an **environment** before deploying anything:
 
 - **Existing project + environment**: ask for the slugs and use them as-is. Instance slugs are `<project>-<env>-<component>`. Don't double-prefix.
-- **Create new (CLI-able now)**:
-  ```bash
-  mass project create <project-slug> --name "<Project Name>"
-  mass environment create <project>-<env-suffix> --name "<Env Name>"
-  ```
-- **Fork from prod**: not yet a CLI verb — use the `forkEnvironment` GraphQL mutation or the UI.
+- **Create new** (MCP): `create_project` (`id`, `name`), then `create_environment` (`project_id`, `id` = env suffix, `name`).
+- **Clone a blueprint**: `clone_project` duplicates components + wiring into a new project (no environments copied).
+- **Fork from prod**: `fork_environment` — copies the parent's component configuration into the new environment, with opt-in toggles for secrets, remote references, and environment defaults.
 
 **Slug format reminders:**
 - Project slug, env suffix, component id: max 20 chars, lowercase alphanumeric only.
 - Instance slug = `<project>-<env>-<component>` (e.g. `ecomm-prod-db`).
-- The env id you pass to `mass environment create` is the FULL `<project>-<env-suffix>` slug.
-- Resource slug = `<project>-<env>-<component>-<artifact-field>` (e.g. `ecomm-prod-db-database`).
+- `create_environment` takes the project via `project_id` and just the env suffix as `id`; every other tool takes the FULL `<project>-<env>` environment identifier.
+- Resource slug = `<project>-<env>-<component>.<artifact-field>` (e.g. `ecomm-prod-db.database`).
 
 ### Error Recovery
 
-If you encounter ANY auth, credential, or CLI issue: **stop and ask the user for help.** Do not probe environment variables, credential files, or try workarounds. Just tell them the error.
+If you encounter ANY auth, credential, CLI, or MCP connectivity issue: **stop and ask the user for help.** Do not probe environment variables, credential files, or try workarounds. Just tell them the error.
 
 ---
 
@@ -113,14 +107,14 @@ If you encounter ANY auth, credential, or CLI issue: **stop and ask the user for
 **Use when:** Testing bundles end-to-end, validating compliance, iterating on real infrastructure.
 
 Workflow:
-1. **Setup**: Ask for credentials/profile, project, environment
+1. **Setup**: Verify MCP auth (`get_viewer`), ask for CLI profile, project, environment
 2. **Requirements**: Gather design intent interactively
 3. **Scaffold**: Generate bundle code
-4. **Publish**: `mass bundle publish --development` (and `mass resource-type publish` for any new resource types)
-5. **Add to blueprint**: `mass component add <project> <bundle> --id <component-id>` (once per project)
-6. **Pin release channel**: `mass instance version <project>-<env>-<component>@latest --release-channel development`
-7. **Deploy**: `mass instance deploy <slug> --params=/tmp/params.json --message "..." --follow`
-8. **Iterate**: Code → publish → `mass instance deploy --patch ...` → fix → repeat
+4. **Publish** (CLI): `mass bundle publish --development` (and `mass resource-type publish` for any new resource types)
+5. **Add to blueprint** (MCP): `add_component` with `project_id`, `bundle_name`, `id`, `name` (once per project)
+6. **Pin development channel** (MCP): `update_instance` with version `latest+dev` — the `+dev` suffix on the version constraint opts into development releases
+7. **Deploy** (MCP): `create_deployment` (action `PROVISION`, params, message) then `get_deployment_logs` with `follow: true`
+8. **Iterate**: Code → publish (CLI) → `create_deployment` again → fix → repeat
 9. **Compliance**: Remediate Checkov findings
 10. **Finalize**: Human marks stable when ready
 
@@ -129,12 +123,14 @@ Workflow:
 **Use when:** Validating bundle version upgrades before production rollout.
 
 Workflow:
-1. Fork production environment to a test env (GraphQL `forkEnvironment` or UI — no CLI yet)
-2. Copy production instance config into the forked instance (`copyInstance` GraphQL — no CLI verb)
-3. Deploy current version (baseline)
-4. `mass instance version <slug>@<target>` → deploy upgrade
-5. Validate success
-6. Report results
+1. Fork production environment to a test env (`fork_environment` — copies component config; opt into secrets/refs/defaults)
+2. Adjust any instances that shouldn't mirror prod exactly (`copy_instance` with `overrides`, e.g. low-scale dependencies)
+3. Verify the mirror with `compare_environments`
+4. Deploy current version as baseline (`create_deployment` + `get_deployment_logs follow:true`)
+5. Pin target version (`update_instance`) → deploy upgrade
+6. Validate success; audit what changed with `compare_deployments`
+7. Report results (with `rollback_deployment` as the escape hatch if the upgrade regresses)
+8. Tear down with `decommission_environment`, optionally `delete_environment`
 
 ### Build-Only Mode
 **Command:** `/massdriver:gen`
@@ -161,8 +157,8 @@ Before writing code, gather these inputs through conversation:
 
 **2. Resource Scoping**
 Based on the use case, suggest appropriate cloud resources:
-- Check existing bundles: `mass bundle list`
-- Check existing resource types: `mass resource-type list` (ignore any `massdriver/` prefixed results)
+- Check existing bundles: `list_oci_repos` with `artifact_type: BUNDLE` (MCP)
+- Check existing resource types: `mass resource-type list` (CLI — ignore any `massdriver/` prefixed results)
 - Propose resources that fit the lifecycle tier (foundational/stateful/compute)
 
 **3. Preset Design**
@@ -188,7 +184,7 @@ Understand compliance requirements:
 
 **5. Connections & Artifacts**
 - What does this bundle need? What does it produce?
-- Run `mass resource-type list` to see available resource type definitions
+- Run `mass resource-type list` (CLI) to see available resource type definitions
 - **Resource types and Terraform providers are 1:1** — always base provider config on the credential resource type's schema
 
 ### Phase 2: Bundle Development
@@ -210,7 +206,7 @@ Understand compliance requirements:
    - Resource types go live immediately — there is NO `--development` flag.
    - **Warning:** Published resource types are live immediately — avoid breaking changes.
 
-3. **Create massdriver.yaml** with params, connections, artifacts, UI ordering. Naming note: the bundle YAML keeps the `artifacts:` section key in v2 — that hasn't been renamed. At deploy time, what you publish via `massdriver_resource` HCL resources surface as runtime "resources" managed by `mass resource`.
+3. **Create massdriver.yaml** with params, connections, artifacts, UI ordering. Naming note: the bundle YAML section key is `artifacts:`, but what those publish (via `massdriver_resource` HCL resources) surface at deploy time as runtime "resources".
 
 4. **Create Terraform code** — fetch the credential resource type FIRST:
    ```bash
@@ -232,78 +228,35 @@ Understand compliance requirements:
 
 ### Phase 3: Add to Project Blueprint
 
-Components live at the **project** level in v2. Once added, every environment auto-gets an instance.
+Components live at the **project** level in v2. Once added, every environment auto-gets an instance. Use MCP:
 
-```bash
-# One-time per (project, bundle) pair:
-mass component add <project-slug> <bundle-name> --id <component-id> \
-  --name "<Display Name>" \
-  --description "<what this component is for>"
+- `add_component` — one-time per (project, bundle) pair
+- `link_components` — wire one component's output field to another's input field (component IDs are `<project>-<comp>`)
 
-# Components can be linked to other components in the same blueprint:
-mass component link <project>-<from-component>.<from-field> \
-                    <project>-<to-component>.<to-field> \
-                    --from-version ~1.0 --to-version ~2.0
-```
-
-`<component-id>` is the final segment of every instance slug — keep it short (max 20 chars, lowercase alphanumeric).
+The component `id` is the final segment of every instance slug — keep it short (max 20 chars, lowercase alphanumeric).
 
 ### Phase 4: Deploy Loop
 
 **Initial deploy in a target environment:**
 
-```bash
-# Pin the instance to development releases so it picks up `--development` publishes
-mass instance version <project>-<env>-<component>@latest --release-channel development
-
-# Build the params file from your preset
-cat > /tmp/params.json <<'EOF'
-{...params from preset...}
-EOF
-
-# Deploy with config + message + log streaming
-mass instance deploy <project>-<env>-<component> \
-  --params=/tmp/params.json \
-  --message "Initial test deployment" \
-  --follow
-```
-
-`--follow` streams logs to stdout until the deployment completes. If you forget it (or want logs after the fact):
-
-```bash
-mass deployment list <project>-<env>-<component>            # most recent first
-mass deployment logs <deployment-id>
-```
+1. **Pin the development channel** (MCP) so the instance picks up `--development` publishes: `update_instance` with version `latest+dev`. Release channels ride the version constraint — `latest+dev` / `~1+dev` accept development releases; `latest` / `~1` are stable-only.
+2. **Deploy** (MCP): `create_deployment` (action `PROVISION`) with your preset params and a descriptive message
+3. **Watch logs** (MCP): `get_deployment_logs` with `follow: true` — blocks until the deployment reaches a terminal status and returns the final status plus complete logs. Long deploys can outlast the default wait; raise `timeout_seconds` and re-call if still running.
 
 **Iteration Loop:**
 
-```bash
-# 1. Make code changes, then ALWAYS publish
-mass bundle publish --development
+1. Make code changes, then ALWAYS publish (CLI): `mass bundle publish --development`
+2. Redeploy (MCP), three flavors:
+   - **Reuse last config** (just pick up the new release): `create_deployment` with `action: PROVISION` and NO `params`, plus a `message`
+   - **Surgical edit**: `get_instance` to read the current `params`, modify the specific fields, then `create_deployment` with the full updated params
+   - **Replace config**: `create_deployment` with the complete new `params` object
+3. Check Checkov findings in the `get_deployment_logs` output (look for `Check:` / `FAILED` lines)
 
-# 2. Patch the previous config and redeploy in one shot:
-mass instance deploy <project>-<env>-<component> \
-  --patch '.storage_gb = 100' \
-  --patch '.multi_az = true' \
-  --message "Increase storage; enable multi-AZ" \
-  --follow
-
-# OR replace the whole config from a file:
-mass instance deploy <project>-<env>-<component> \
-  --params=/tmp/updated.json \
-  --message "..." --follow
-
-# OR redeploy with the LAST config (no flags):
-mass instance deploy <project>-<env>-<component> --message "Retry after publish" --follow
-
-# Check Checkov findings in the streamed output, or after the fact:
-mass deployment logs <deployment-id> 2>&1 | grep -E "Check:|FAILED"
-```
-
-**Key v2 ergonomic wins to remember:**
-- `--patch` with JQ expressions = surgical config edits without re-sending the whole params file.
-- `--follow` rolls config + deploy + log streaming into one call.
-- A flagless `mass instance deploy <slug> -m "..."` reuses the last config — handy after a `mass bundle publish` to roll the new release without re-stating params.
+**Key ergonomic wins to remember:**
+- `create_deployment` without `params` reuses the instance's saved config — handy after a publish to roll the new release without re-stating params.
+- `get_deployment_logs follow:true` rolls deploy-watching into one call — no polling loop.
+- `compare_deployments` shows exactly what a deploy changed (bundle version + leaf-level param diff).
+- `plan_deployment` re-runs a dry-run PLAN from any existing deployment's params without touching anything.
 
 ### Phase 5: Compliance Remediation
 
@@ -312,11 +265,7 @@ As Checkov findings emerge from deployment logs:
 1. **Extract findings** from logs
 2. **Triage by severity** (HIGH/MEDIUM/LOW)
 3. **Apply strategy**: hardcode, make configurable, halt_on_failure, or skip
-4. **Publish and redeploy**:
-   ```bash
-   mass bundle publish --development
-   mass instance deploy <slug> --message "Fix CKV_AWS_xxx" --follow
-   ```
+4. **Publish and redeploy**: `mass bundle publish --development` (CLI), then `create_deployment` (action `PROVISION`, no params, message `"Fix CKV_AWS_xxx"`) and `get_deployment_logs follow:true` (MCP)
 5. **Repeat** until clean
 
 See [references/compliance.md](./references/compliance.md) for detailed remediation guidance.
@@ -361,7 +310,7 @@ mass server -p 8080 --browser
 
 **Bundle**: Reusable IaC module with declarative configuration (`massdriver.yaml` + `src/` code). Published to an OCI repository.
 
-**Resource Type** (formerly "artifact definition"): Schema contract defining data passed between bundles. Lives in `resource-type/<name>/massdriver.yaml`. Supports:
+**Resource Type**: Schema contract defining data passed between bundles. Lives in `resource-type/<name>/massdriver.yaml`. Supports:
 - **Schema** → Generates UI form for manual resource creation
 - **Instructions** (`instructions/`) → Markdown walkthroughs for obtaining values
 - **Exports** (`exports/`) → Downloadable files (e.g., kubeconfig)
@@ -370,15 +319,15 @@ mass server -p 8080 --browser
 
 **Platform**: A resource type for cloud credentials. Lives in `platforms/<name>/massdriver.yaml`. Identical structure to other resource types — separate directory for organization only.
 
-**Resource** (formerly "artifact"): An instance of a resource type containing actual data (credentials, connection strings). Created by bundles via the `massdriver_resource` Terraform resource (renamed from `massdriver_artifact` in v2), or by users (UI form / `mass resource create`).
+**Resource**: An instance of a resource type containing actual data (credentials, connection strings). Created by bundles via the `massdriver_resource` Terraform resource, or by users (UI form / `create_resource` MCP tool).
 
-**Connection**: How instances receive resources at deploy time. Authored in `massdriver.yaml`, wired in the project blueprint via `mass component link`, materialized as a connection in each environment, flows to Terraform as a variable at deploy.
+**Connection**: How instances receive resources at deploy time. Authored in `massdriver.yaml`, wired in the project blueprint via `link_components`, materialized as a connection in each environment, flows to Terraform as a variable at deploy. Overridable per instance with `set_remote_reference` (bind a slot to a resource from another project or an imported resource).
 
-**Component**: A slot in a project's blueprint backed by a bundle. Added once via `mass component add`. Every environment auto-instantiates every component.
+**Component**: A slot in a project's blueprint backed by a bundle. Added once via `add_component`. Every environment auto-instantiates every component.
 
-**Instance**: A deployed component in a specific environment. Slug is `<project>-<env>-<component>`. Configured + deployed via `mass instance deploy`.
+**Instance**: A deployed component in a specific environment. Slug is `<project>-<env>-<component>`. Configured + deployed via `create_deployment`.
 
-**Key Flow**: Edit `massdriver.yaml` → `mass bundle build` → `tofu validate` → `mass bundle publish --development` → `mass instance deploy <slug> --follow`
+**Key Flow**: Edit `massdriver.yaml` → `mass bundle build` → `tofu validate` → `mass bundle publish --development` (CLI) → `create_deployment` + `get_deployment_logs follow:true` (MCP)
 
 ---
 
@@ -445,8 +394,6 @@ Massdriver validates `massdriver.yaml` against:
 - Bundles: https://api.massdriver.cloud/json-schemas/bundle.json
 - Resource Types: https://api.massdriver.cloud/json-schemas/artifact-definition.json (the URL still uses the legacy name; the document itself is the v2 schema)
 
-GraphQL mutation inputs also publish JSON Schemas at `https://api.massdriver.cloud/graphql/v2/inputs/<mutationName>.json`.
-
 ---
 
 ## Critical Rules
@@ -496,7 +443,7 @@ terraform {
   required_providers {
     massdriver = {
       source  = "massdriver-cloud/massdriver"
-      version = "~> 1.3"
+      version = "~> 2.0"
     }
   }
 }
@@ -554,7 +501,7 @@ resource "massdriver_resource" "database" {
   field = "database"
   name  = "PostgreSQL ${var.md_metadata.name_prefix}"
 
-  artifact = jsonencode({
+  resource = jsonencode({
     id = aws_rds_cluster.main.id
     auth = {
       hostname = aws_rds_cluster.main.endpoint
@@ -635,10 +582,9 @@ Configure behavior in massdriver.yaml:
 ```yaml
 steps:
   - path: src
-    provisioner: opentofu:1.10
+    provisioner: opentofu
     config:
       checkov:
-        enable: true
         halt_on_failure: '.params.md_metadata.default_tags["md-target"] == "production"'
 ```
 
@@ -691,16 +637,18 @@ Before publishing:
 | artifacts.tf field mismatch | Ensure `field = "X"` matches `artifacts.properties.X` |
 | Publishing stable during development | Use `--development` flag always until production-ready |
 | Forgot to publish after code change | Platform can't read local files — always publish |
-| Instance not picking up new release after publish | Set release channel: `mass instance version <slug>@latest --release-channel development` |
-| Used v1 release-channel string `latest+dev` | v2 wants `--release-channel development` (lowercase, no `+dev` suffix) |
-| Tried `mass pkg create` to add to canvas | v2: `mass component add <project> <bundle> --id <comp>` once at the project level |
-| Tried `mass pkg cfg` to set params | v2: pass `--params=` (or `--patch=`) directly to `mass instance deploy` |
-| Used `mass logs` | v2: `mass deployment logs <id>`, or `mass instance deploy --follow` to stream live |
+| Instance not picking up new release after publish | Pin the development channel: `update_instance` with version `latest+dev` |
+| Assumed a release-channel flag or enum | Channels ride the version constraint: `latest+dev` / `~1+dev` for development, `latest` / `~1` for stable |
+| Tried `mass pkg create` / `mass component add` for deploys | `add_component` (MCP) once at the project level |
+| Tried `mass pkg cfg` to set params | Params travel with each `create_deployment` call |
+| Used `mass logs` or CLI deploy commands | `create_deployment` + `get_deployment_logs` (`follow: true`) via MCP |
+| Deployed via CLI when MCP is available | Control-plane ops go through MCP tools; CLI is for filesystem work only |
+| Called `approve_deployment` | Approval is human-only — the safety hook blocks it. Ask the user to approve in the UI |
 | Inline checkov:skip comments | Use `src/.checkov.yml` file instead |
 | Using `massdriver/` prefixed defs | These are deprecated — ignore them completely |
 | Guessing provider config | Always `mass resource-type get` first — providers and resource types are 1:1 |
-| Deploy without watching logs | Use `--follow`, or run `mass deployment logs <id>` after the fact |
-| Config deploy without message | Always use `-m "description"` (or `--message`) |
+| Deploy without watching logs | Always follow with `get_deployment_logs` (`follow: true`) |
+| Deployment without message | Always pass `message` to `create_deployment` |
 
 ---
 
@@ -714,68 +662,30 @@ Before publishing:
 
 **After ANY change, you MUST publish.** The platform has no access to your local filesystem — changes don't exist until you publish.
 
-After publishing a new bundle release, instances on the `development` release channel auto-resolve to it. To force a redeploy of the new release without changing config:
-
-```bash
-mass instance deploy <project>-<env>-<component> --message "Pick up new release" --follow
-```
+After publishing a new bundle release, instances on the `development` release channel auto-resolve to it. To force a redeploy of the new release without changing config, call `create_deployment` with `action: PROVISION`, no `params`, and a message like `"Pick up new release"`.
 
 ---
 
-## Commands Reference
+## CLI Reference
 
 ```bash
-# Discovery
-mass bundle list                         # List bundles
-mass resource-type list                  # List resource types (ignore massdriver/ prefixed)
-mass resource-type get <name>            # Get a resource type schema — ALWAYS do before writing providers
-mass instance list <project>-<env>       # List instances in an environment
-mass project list                        # List projects
-mass environment list                    # List environments
+# Resource types
+mass resource-type list                  # Ignore massdriver/ prefixed
+mass resource-type get <name>            # ALWAYS do before writing providers
 
 # Build / Lint / Local
 mass bundle build                        # Generate schemas + variables
 mass bundle lint                         # Check massdriver.yaml for errors
 mass bundle new -n my-bundle -t opentofu # Scaffold from a template
+mass bundle pull <name>                  # Pull a published bundle to disk
 mass server                              # Local bundle dev server
+mass schema validate|dereference         # Schema tooling
 tofu init && tofu validate               # Validate IaC
 
 # Publish (NEVER stable without explicit human authorization)
 mass bundle publish --development
 mass resource-type publish resource-type/my-type/massdriver.yaml
 mass resource-type publish platforms/my-cloud/massdriver.yaml
-
-# Project & Environment
-mass project create <project> --name "<Name>"
-mass environment create <project>-<env-suffix> --name "<Name>"
-mass environment update <project>-<env> --description "<note>"
-mass environment default <project>-<env> <resource-id-or-uuid>
-
-# Blueprint (project-scoped components + links)
-mass component add <project> <bundle-oci-name> --id <comp-id> --name "<Display>"
-mass component link <project>-<from-comp>.<from-field> <project>-<to-comp>.<to-field> \
-                    --from-version ~1.0 --to-version ~2.0
-mass component update <project>-<comp-id> --name "<New Display>"
-mass component remove <project>-<comp-id>
-mass component unlink <link-uuid>
-
-# Instance lifecycle (per environment)
-mass instance version <project>-<env>-<comp>@latest --release-channel development
-mass instance deploy <project>-<env>-<comp> --params=/tmp/params.json --message "..." --follow
-mass instance deploy <project>-<env>-<comp> --patch '.field = value' --message "..." --follow
-mass instance deploy <project>-<env>-<comp> --message "Redeploy with last config" --follow
-mass instance destroy <project>-<env>-<comp> --force --message "Teardown"
-mass instance get <project>-<env>-<comp> -o json
-
-# Deployment history & logs
-mass deployment list <project>-<env>-<comp> --limit 25
-mass deployment get <deployment-uuid>
-mass deployment logs <deployment-uuid>
-
-# Resources (runtime instances of resource types)
-mass resource get <resource-uuid-or-slug>
-mass resource download <resource-uuid-or-slug> -f yaml
-mass resource create -n <name> -t <resource-type> -f /path/to/payload.json   # for imported resources
 
 # Auth / introspection
 mass whoami
@@ -787,7 +697,7 @@ mass version
 ## See Also
 
 - [PATTERNS.md](./PATTERNS.md) - Complete examples
-- [references/graphql.md](./references/graphql.md) - GraphQL v2 API operations
+- [references/graphql.md](./references/graphql.md) - GraphQL multi-entity queries
 - [references/alarms.md](./references/alarms.md) - Monitoring alarms
 - [references/compliance.md](./references/compliance.md) - Checkov remediation
 - [snippets/](./snippets/) - Copy-paste templates

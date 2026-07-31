@@ -4,14 +4,7 @@ After a successful deployment, review Checkov findings from the deployment logs 
 
 ## Workflow
 
-**1. Extract Checkov findings:**
-```bash
-# After-the-fact:
-mass deployment logs <deployment-id> 2>&1 | grep -E "Check:|FAILED"
-
-# Or stream live during deploy:
-mass instance deploy <slug> --message "..." --follow 2>&1 | grep -E "Check:|FAILED"
-```
+**1. Extract Checkov findings** from the deployment logs (MCP): `get_deployment_logs` with `follow: true` right after deploying, or without `follow` for a past deployment. Scan the returned logs for `Check:` and `FAILED` lines.
 
 **2. Create TODO list** in the bundle's directory (e.g., `bundles/aws-rds-mysql/TODO.md`):
 
@@ -70,10 +63,8 @@ resource "aws_db_parameter_group" "main" {
 ```
 
 **6. Republish and redeploy** to verify fixes:
-```bash
-mass bundle publish --development
-mass instance deploy <project>-<env>-<component> -m "Fix CKV2_AWS_69: Enable SSL enforcement" --follow
-```
+- CLI: `mass bundle publish --development`
+- MCP: `create_deployment` (PROVISION, message naming the fix, e.g. "Fix CKV2_AWS_69: Enable SSL enforcement") then `get_deployment_logs follow:true`
 
 ## Priority Ratings
 

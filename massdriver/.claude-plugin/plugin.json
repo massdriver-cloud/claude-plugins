@@ -1,12 +1,32 @@
 {
   "name": "massdriver",
-  "description": "Develop and test Massdriver v2 infrastructure bundles with interactive workflows: /develop for full bundle development with deploy loops, /test-upgrade for day 2 upgrade validation, and /gen for quick scaffolding. Includes safety guardrails, compliance automation, and GraphQL v2 API integration.",
-  "version": "4.0.0",
+  "description": "Ship your own cloud infrastructure without filing a ticket. Engineers through vibe coders describe what their app needs, and Massdriver provisions it from the modules your platform team already approved, with cost, security, and compliance policy enforced on every deploy.",
+  "version": "4.1.0",
   "author": {
     "name": "Massdriver",
     "url": "https://massdriver.cloud"
   },
   "repository": "https://github.com/massdriver-cloud/claude-plugins",
   "license": "Apache-2.0",
-  "keywords": ["infrastructure", "iac", "terraform", "opentofu", "bundles", "devops", "platform-engineering", "compliance", "checkov", "day2", "upgrades"]
+  "keywords": [
+  "self-service",
+  "deploy",
+  "infrastructure",
+  "provisioning",
+  "internal-developer-platform",
+  "platform-engineering",
+  "golden-paths",
+  "service-catalog",
+  "policy-as-code",
+  "compliance",
+  "infrastructure-as-code",
+  "terraform",
+  "opentofu",
+  "helm",
+  "database",
+  "hosting",
+  "environments",
+  "preview-environments",
+  "massdriver"
+]
 }
