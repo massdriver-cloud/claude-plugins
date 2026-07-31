@@ -2,7 +2,7 @@
 
 Complete examples for bundles, resource types, and platforms. Use these for copy-paste and learning.
 
-> **Naming note (v2):**
+> **Naming note:**
 > - Schema contracts are **resource types**, and they live in `resource-type/<name>/massdriver.yaml`. Some existing repositories (e.g. the catalog) use an `artifact-definitions/` directory instead — both work; new bundles should use `resource-type/`.
 > - The Terraform provider's HCL resource is `massdriver_resource`.
 > - The bundle YAML keeps the section keys `params:`, `connections:`, and `artifacts:` — those are unchanged.
@@ -696,7 +696,7 @@ provider "aws" {
 }
 ```
 
-**Environment Defaults Flow (v2):**
+**Environment Defaults Flow:**
 1. Admin creates AWS credential resource via platform UI form (or `create_resource` MCP tool)
 2. Admin sets it as default for the production environment: `set_environment_default` (share to the environment with `create_resource_grant` first)
 3. The blueprint includes a component for the RDS bundle (`add_component`)

@@ -1,17 +1,17 @@
 ---
 name: massdriver
-description: Develop and test Massdriver v2 infrastructure bundles. Operates in three modes - FULL (interactive deploy loop via /massdriver:develop), UPGRADE TESTING (day 2 validation via /massdriver:test-upgrade), or BUILD-ONLY (/massdriver:gen for local scaffolding). Auto-activates when working with massdriver.yaml, bundles/, resource-type/ (or legacy artifact-definitions/), platforms/, or projects/ directories. Use when creating bundles, modifying IaC, testing deployments, validating upgrades, or fixing compliance findings.
+description: Develop and test Massdriver infrastructure bundles. Operates in three modes - FULL (interactive deploy loop via /massdriver:develop), UPGRADE TESTING (day 2 validation via /massdriver:test-upgrade), or BUILD-ONLY (/massdriver:gen for local scaffolding). Auto-activates when working with massdriver.yaml, bundles/, resource-type/ (or legacy artifact-definitions/), platforms/, or projects/ directories. Use when creating bundles, modifying IaC, testing deployments, validating upgrades, or fixing compliance findings.
 ---
 
-# Massdriver Bundle Development (v2)
+# Massdriver Bundle Development
 
-You are helping develop infrastructure bundles for Massdriver v2. This skill provides patterns, workflows, and reference material for bundle development against the v2 platform.
+You are helping develop infrastructure bundles for Massdriver. This skill provides patterns, workflows, and reference material for bundle development against the platform.
 
 **Tooling hierarchy — MCP first.** Every control-plane operation (projects, environments, components, instances, deployments, resources) is a tool on the `massdriver` MCP server — the server's tool list and schemas are the reference; don't guess arguments, read them. The `mass` CLI is used ONLY for filesystem-bound work the MCP server can't touch (see CLI Reference at the bottom). The UI is only for first-time credential/secret bootstrapping and visual canvas inspection — hand the user a deep link with `get_url`. GraphQL is optional, for multi-entity queries only ([references/graphql.md](./references/graphql.md)).
 
-## v2 Mental Model (read first)
+## Mental Model (read first)
 
-Massdriver v2 separates **design time** from **deploy time**:
+Massdriver separates **design time** from **deploy time**:
 
 - **Project** — owns a **blueprint**: a graph of `components` connected by `links`. The blueprint is the architecture.
 - **Component** — a slot in the blueprint backed by a bundle (the IaC). Add a component once at the project level — every environment gets it automatically.
@@ -43,11 +43,10 @@ Components are added exactly once, at the project level (`add_component`) — ne
 1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
 2. **NEVER** configure or deploy to production environments
 3. **ALWAYS** pass a `message` when creating deployments (`create_deployment`, `propose_deployment`)
-4. **NEVER** use, mention, inspect, or reference `massdriver/` prefixed resource types, bundles, or anything else — they are from a deprecated public registry, are full of red herrings, and will never work. Pretend they do not exist. If they appear in tool output, ignore them completely.
-5. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
-6. **ALWAYS** watch deployment logs after every deploy (`get_deployment_logs` with `follow: true`)
-7. **ALWAYS** ask the user for help if you encounter auth/credential/tooling issues — do NOT probe or guess
-8. **NEVER** call `approve_deployment` — approving proposed deployments (including rollbacks) is a human authorization step. The safety hook blocks it.
+4. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
+5. **ALWAYS** watch deployment logs after every deploy (`get_deployment_logs` with `follow: true`)
+6. **ALWAYS** ask the user for help if you encounter auth/credential/tooling issues — do NOT probe or guess
+7. **NEVER** call `approve_deployment` — approving proposed deployments (including rollbacks) is a human authorization step. The safety hook blocks it.
 
 ## Deprecated `massdriver.yaml` Fields
 
@@ -81,7 +80,7 @@ Do NOT include these fields (they cause linter warnings):
 
 ### Project & Environment
 
-In v2 you'll likely need both a **project** and an **environment** before deploying anything:
+You'll likely need both a **project** and an **environment** before deploying anything:
 
 - **Existing project + environment**: ask for the slugs and use them as-is. Instance slugs are `<project>-<env>-<component>`. Don't double-prefix.
 - **Create new** (MCP): `create_project` (`id`, `name`), then `create_environment` (`project_id`, `id` = env suffix, `name`).
@@ -158,7 +157,7 @@ Before writing code, gather these inputs through conversation:
 **2. Resource Scoping**
 Based on the use case, suggest appropriate cloud resources:
 - Check existing bundles: `list_oci_repos` with `artifact_type: BUNDLE` (MCP)
-- Check existing resource types: `mass resource-type list` (CLI — ignore any `massdriver/` prefixed results)
+- Check existing resource types: `mass resource-type list` (CLI)
 - Propose resources that fit the lifecycle tier (foundational/stateful/compute)
 
 **3. Preset Design**
@@ -228,7 +227,7 @@ Understand compliance requirements:
 
 ### Phase 3: Add to Project Blueprint
 
-Components live at the **project** level in v2. Once added, every environment auto-gets an instance. Use MCP:
+Components live at the **project** level. Once added, every environment auto-gets an instance. Use MCP:
 
 - `add_component` — one-time per (project, bundle) pair
 - `link_components` — wire one component's output field to another's input field (component IDs are `<project>-<comp>`)
@@ -680,7 +679,6 @@ Before publishing:
 | Deployed via CLI when MCP is available | Control-plane ops go through MCP tools; CLI is for filesystem work only |
 | Called `approve_deployment` | Approval is human-only — the safety hook blocks it. Ask the user to approve in the UI |
 | Inline checkov:skip comments | Use `src/.checkov.yml` file instead |
-| Using `massdriver/` prefixed defs | These are deprecated — ignore them completely |
 | Guessing provider config | Always `mass resource-type get` first — providers and resource types are 1:1 |
 | Deploy without watching logs | Always follow with `get_deployment_logs` (`follow: true`) |
 | Deployment without message | Always pass `message` to `create_deployment` |
@@ -705,7 +703,7 @@ After publishing a new bundle release, instances on the `development` release ch
 
 ```bash
 # Resource types
-mass resource-type list                  # Ignore massdriver/ prefixed
+mass resource-type list
 mass resource-type get <name>            # ALWAYS do before writing providers
 
 # Build / Lint / Local

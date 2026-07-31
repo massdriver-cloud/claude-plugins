@@ -37,7 +37,7 @@ default_test_project: ""
 
 # Massdriver Settings
 
-This file configures the Massdriver plugin for this project (v2).
+This file configures the Massdriver plugin for this project.
 
 ## Production Protection
 

@@ -1,6 +1,6 @@
-# Massdriver Plugin for Claude Code (v2)
+# Massdriver Plugin for Claude Code
 
-Build infrastructure bundles for [Massdriver](https://massdriver.cloud) v2 — the internal developer platform that turns infrastructure-as-code into reusable, self-service components with built-in guardrails.
+Build infrastructure bundles for [Massdriver](https://massdriver.cloud) — the internal developer platform that turns infrastructure-as-code into reusable, self-service components with built-in guardrails.
 
 This plugin is **MCP-first**: all control-plane operations (projects, environments, components, deployments, resources) go through the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server), which the plugin registers automatically. The **Massdriver CLI** (`mass`) is still required for filesystem-bound work — bundle build/lint/publish/pull and resource-type publishing.
 
@@ -122,7 +122,7 @@ This plugin helps platform engineers create and test Massdriver bundles — reus
 - **Upgrade testing**: Validate version upgrades against production configs (`fork_environment` + `copy_instance`, verified with `compare_environments`)
 - **Safety guardrails**: Blocks non-development publishes and production-targeting writes — across BOTH `mass` CLI commands and MCP tool calls, including automated deployment approval
 - **Compliance automation**: Iterates until Checkov findings are resolved
-- **GraphQL v2 reference**: Multi-entity queries for when one query beats a chain of tool calls
+- **GraphQL reference**: Multi-entity queries for when one query beats a chain of tool calls
 
 ## When It Activates
 
@@ -148,8 +148,8 @@ claude-plugins/
     │   └── test-safety-check.sh    # Test suite for the safety guard
     ├── agents/
     │   ├── architect.md            # Citizen-engineer project design (experimental)
-    │   ├── bundle-dev.md           # Full development workflow (v2)
-    │   └── upgrade-tester.md       # Day 2 upgrade testing (v2)
+    │   ├── bundle-dev.md           # Full development workflow
+    │   └── upgrade-tester.md       # Day 2 upgrade testing
     ├── commands/
     │   ├── architect.md            # /massdriver:architect
     │   ├── develop.md              # /massdriver:develop
@@ -161,7 +161,7 @@ claude-plugins/
     │   └── massdriver.local.md     # Settings template
     └── skills/
         └── massdriver/
-            ├── SKILL.md            # Core knowledge (v2 mental model + workflows)
+            ├── SKILL.md            # Core knowledge (mental model + workflows)
             ├── PATTERNS.md         # Bundle and resource type examples
             ├── snippets/           # Copy-paste templates
             └── references/
@@ -272,7 +272,7 @@ When you're done: `claude plugin enable massdriver` to restore the installed cop
 ## Requirements
 
 - Docker (runs the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server) — see Installation)
-- [Massdriver CLI v2](https://docs.massdriver.cloud/cli/overview) (`mass`) — for bundle/resource-type publishing and local builds
+- [Massdriver CLI](https://docs.massdriver.cloud/cli/overview) (`mass`) — for bundle/resource-type publishing and local builds
 - OpenTofu or Terraform
 - A Massdriver account, with either an API key exported (`MASSDRIVER_API_KEY` + `MASSDRIVER_ORGANIZATION_ID`) or a profile in `~/.config/massdriver/config.yaml`
 
