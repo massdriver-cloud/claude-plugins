@@ -582,10 +582,9 @@ Configure behavior in massdriver.yaml:
 ```yaml
 steps:
   - path: src
-    provisioner: opentofu:1.10
+    provisioner: opentofu
     config:
       checkov:
-        enable: true
         halt_on_failure: '.params.md_metadata.default_tags["md-target"] == "production"'
 ```
 

@@ -130,7 +130,9 @@ claude-plugins/
     │   └── plugin.json
     ├── .mcp.json                   # Points at the MCP launcher script
     ├── scripts/
-    │   └── run-mcp-server.sh       # Runs the Massdriver MCP server via Docker
+    │   ├── run-mcp-server.sh       # Runs the Massdriver MCP server via Docker
+    │   ├── massdriver-safety-check.sh  # Deterministic PreToolUse guard (CLI + MCP)
+    │   └── test-safety-check.sh    # Test suite for the safety guard
     ├── agents/
     │   ├── bundle-dev.md           # Full development workflow (v2)
     │   └── upgrade-tester.md       # Day 2 upgrade testing (v2)

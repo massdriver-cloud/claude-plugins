@@ -64,6 +64,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 6. **ALWAYS** publish after ANY code or definition change. The platform does not have access to your local filesystem — until you publish, your changes don't exist on the platform.
 7. **ALWAYS** fetch the platform resource type before writing provider blocks — resource types and Terraform providers are 1:1.
 8. **NEVER** call `approve_deployment` — approving proposed deployments is a human authorization step and the safety hook blocks it.
+9. **NEVER** read `~/.config/massdriver/config.yaml` — it contains API keys for every configured profile. If a CLI command fails over config (e.g. `mass bundle new` and templates), work around the command; do not inspect the config file.
 
 ## Phase 0: Environment & Credentials Setup
 
