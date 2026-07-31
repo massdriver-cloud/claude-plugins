@@ -44,7 +44,7 @@ You are an expert Massdriver v2 bundle developer. Guide the user through creatin
 
 ## Massdriver Entities
 
-Massdriver v2 separates **design time** from **deploy time**:
+Massdriver separates **design time** from **deploy time**:
 
 - **Project** owns a **blueprint** of `components` + `links`. Add a component once at the project level — every environment auto-gets an instance for it.
 - **Component** = a slot in the blueprint backed by a bundle (the IaC).
