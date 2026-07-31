@@ -14,15 +14,15 @@ Start the bundle-dev agent to guide you through creating and testing a Massdrive
 
 ## What This Does
 
-1. **Setup credentials, project & environment** - Ask for CLI profile and target project + environment (project + env can both be created via CLI in v2)
+1. **Setup** - Verify MCP auth (`get_viewer`) and select/create the target project + environment (MCP `create_project` / `create_environment`)
 2. **Gather requirements** - Understand your use case, developer UX needs, and compliance strategy
 3. **Scaffold bundle** - Create massdriver.yaml, Terraform code, and supporting files
-4. **Publish bundle** - `mass repository create <bundle> -t bundle` (first publish only), then `mass bundle publish --development`
-5. **Add to project blueprint** - `mass component add <project> <bundle> --id <comp-id>` (once per project)
-6. **Pin dev releases** - `mass instance version <project>-<env>-<comp>@latest+dev`
-7. **Deploy & iterate** - `mass instance deploy <slug> --params=... --message "..." --follow`, then `--patch` for surgical edits
+4. **Publish bundle** (CLI) - `mass bundle publish --development`
+5. **Add to project blueprint** (MCP) - `add_component` (once per project)
+6. **Pin development channel** (MCP) - `update_instance` with version `latest+dev`
+7. **Deploy & iterate** (MCP) - `create_deployment` + `get_deployment_logs follow:true`, re-publishing and redeploying as code changes
 8. **Remediate compliance** - Fix Checkov findings according to your strategy
-9. **Journal results** - Record what was tested via `mass environment update --description "..."`
+9. **Journal results** (MCP) - Record what was tested via `update_environment`
 
 ## Usage
 

@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "massdriver": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/run-mcp-server.sh"
+    }
+  }
+}

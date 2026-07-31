@@ -1,159 +1,110 @@
 # Adding Alarms to Bundles
 
-Massdriver integrates cloud-native alarms for visibility in the UI. See [Monitoring and Alarms Guide](https://docs.massdriver.cloud/guides/monitoring-and-alarms) for full documentation.
+Massdriver surfaces cloud-native alarms in the UI. Use the official Massdriver modules — each cloud has an **alarm-channel** module (creates the notification plumbing to Massdriver's webhook, one per bundle) and a **metric-alarm** module (creates the cloud alarm AND registers it with the instance via `massdriver_instance_alarm`, one per alarm).
 
-## AWS CloudWatch (Recommended Approach)
+Full input documentation lives in each module's README:
 
-Use the Massdriver Terraform modules for simplified alarm setup:
-- [aws/alarm-channel](https://github.com/massdriver-cloud/terraform-modules/tree/main/aws/alarm-channel) - Creates SNS topic for alarm notifications
-- [aws/cloudwatch-alarm](https://github.com/massdriver-cloud/terraform-modules/tree/main/aws/cloudwatch-alarm) - Creates CloudWatch alarm + registers with Massdriver
+| Cloud | Modules | Alarm modes |
+|-------|---------|-------------|
+| AWS | [aws-alarm-channel](https://github.com/massdriver-cloud/terraform-massdriver-aws-alarm-channel) / [aws-metric-alarm](https://github.com/massdriver-cloud/terraform-massdriver-aws-metric-alarm) | Simple metric, or metric-math expressions (`metric_queries` + `display_metric_key`) |
+| GCP | [gcp-alarm-channel](https://github.com/massdriver-cloud/terraform-massdriver-gcp-alarm-channel) / [gcp-metric-alarm](https://github.com/massdriver-cloud/terraform-massdriver-gcp-metric-alarm) | Boolean, or numeric threshold (with `aggregations`) |
+| Azure | [azure-alarm-channel](https://github.com/massdriver-cloud/terraform-massdriver-azure-alarm-channel) / [azure-metric-alarm](https://github.com/massdriver-cloud/terraform-massdriver-azure-metric-alarm) | Static threshold, or dynamic threshold (Azure ML, `dynamic_criteria`) |
+
+All metric-alarm modules require the massdriver provider `>= 2.0`.
+
+## AWS
 
 ```hcl
 # src/alarms.tf
-
-# 1. Create alarm channel (SNS topic) - one per bundle
 module "alarm_channel" {
-  source      = "github.com/massdriver-cloud/terraform-modules//aws/alarm-channel?ref=main"
+  source      = "massdriver-cloud/aws-alarm-channel/massdriver"
   md_metadata = var.md_metadata
 }
 
-# 2. Create alarms using the channel
-module "alarm_high_cpu" {
-  source      = "github.com/massdriver-cloud/terraform-modules//aws/cloudwatch-alarm?ref=main"
-  md_metadata = var.md_metadata
+module "cpu_alarm" {
+  source = "massdriver-cloud/aws-metric-alarm/massdriver"
 
-  alarm_name   = "${var.md_metadata.name_prefix}-high-cpu"
-  display_name = "High CPU Utilization"
-  message      = "RDS CPU utilization is above 80%"
-
-  namespace   = "AWS/RDS"
-  metric_name = "CPUUtilization"
-  statistic   = "Average"
-  period      = "300"
-
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  threshold           = "80"
-
-  dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.identifier
-  }
-
+  md_metadata   = var.md_metadata
   sns_topic_arn = module.alarm_channel.arn
+
+  alarm_name   = "${var.md_metadata.name_prefix}-cpu-high"
+  display_name = "CPU High"
+  message      = "CPU utilization exceeded threshold"
+
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 3
+  threshold           = 80
+
+  metric_name = "CPUUtilization"
+  namespace   = "AWS/RDS"
+  period      = 300
+  statistic   = "Average"
+  dimensions  = { DBInstanceIdentifier = aws_db_instance.main.identifier }
 }
 ```
 
-**Module benefits:**
-- Handles SNS topic creation and Massdriver webhook subscription
-- Automatically registers `massdriver_package_alarm` for UI visibility
-- Consistent alarm naming and tagging
-
-## GCP Cloud Monitoring
+## GCP
 
 ```hcl
-resource "google_monitoring_alert_policy" "high_cpu" {
-  display_name = "${var.md_metadata.name_prefix}-high-cpu"
-  combiner     = "OR"
-
-  conditions {
-    display_name = "CPU Utilization > 80%"
-    condition_threshold {
-      filter          = "resource.type=\"cloudsql_database\" AND metric.type=\"cloudsql.googleapis.com/database/cpu/utilization\""
-      duration        = "300s"
-      comparison      = "COMPARISON_GT"
-      threshold_value = 0.8
-    }
-  }
-
-  notification_channels = [google_monitoring_notification_channel.massdriver.id]
+module "alarm_channel" {
+  source      = "massdriver-cloud/gcp-alarm-channel/massdriver"
+  md_metadata = var.md_metadata
 }
 
-resource "google_monitoring_notification_channel" "massdriver" {
-  display_name = "Massdriver Webhook"
-  type         = "webhook_tokenauth"
-  labels = {
-    url = var.md_metadata.observability.alarm_webhook_url
+module "cpu_alarm" {
+  source = "massdriver-cloud/gcp-metric-alarm/massdriver"
+
+  md_metadata             = var.md_metadata
+  notification_channel_id = module.alarm_channel.id
+
+  display_name  = "High CPU"
+  message       = "CPU utilization is above 80%"
+  metric_type   = "cloudsql.googleapis.com/database/cpu/utilization"
+  resource_type = "cloudsql_database"
+  comparison    = "COMPARISON_GT"
+  threshold     = 0.8
+  duration      = 60
+
+  aggregations = {
+    alignment_period     = 60
+    per_series_aligner   = "ALIGN_MAX"
+    cross_series_reducer = "REDUCE_MEAN"
   }
-}
-
-resource "massdriver_package_alarm" "high_cpu" {
-  display_name      = "High CPU Utilization"
-  cloud_resource_id = google_monitoring_alert_policy.high_cpu.name
-
-  metric {
-    name      = "cloudsql.googleapis.com/database/cpu/utilization"
-    statistic = "Average"
-  }
-
-  threshold           = 80
-  comparison_operator = "GreaterThanThreshold"
-  period_minutes      = 5
 }
 ```
 
-## Azure Monitor
+## Azure
 
 ```hcl
-resource "azurerm_monitor_metric_alert" "high_cpu" {
-  name                = "${var.md_metadata.name_prefix}-high-cpu"
-  resource_group_name = azurerm_resource_group.main.name
-  scopes              = [azurerm_postgresql_flexible_server.main.id]
-  description         = "CPU utilization is above 80%"
-
-  criteria {
-    metric_namespace = "Microsoft.DBforPostgreSQL/flexibleServers"
-    metric_name      = "cpu_percent"
-    aggregation      = "Average"
-    operator         = "GreaterThan"
-    threshold        = 80
-  }
-
-  action {
-    action_group_id = azurerm_monitor_action_group.massdriver.id
-  }
+module "alarm_channel" {
+  source      = "massdriver-cloud/azure-alarm-channel/massdriver"
+  md_metadata = var.md_metadata
 }
 
-resource "azurerm_monitor_action_group" "massdriver" {
-  name                = "${var.md_metadata.name_prefix}-massdriver"
-  resource_group_name = azurerm_resource_group.main.name
-  short_name          = "massdriver"
+module "cpu_alarm" {
+  source = "massdriver-cloud/azure-metric-alarm/massdriver"
 
-  webhook_receiver {
-    name        = "massdriver"
-    service_uri = var.md_metadata.observability.alarm_webhook_url
-  }
-}
+  md_metadata             = var.md_metadata
+  monitor_action_group_id = module.alarm_channel.id
+  resource_group_name     = azurerm_resource_group.main.name
+  scopes                  = [azurerm_postgresql_flexible_server.main.id]
 
-resource "massdriver_package_alarm" "high_cpu" {
-  display_name      = "High CPU Utilization"
-  cloud_resource_id = azurerm_monitor_metric_alert.high_cpu.id
+  alarm_name   = "${var.md_metadata.name_prefix}-cpu-high"
+  display_name = "CPU High"
+  message      = "CPU utilization exceeded threshold"
 
-  metric {
-    namespace = "Microsoft.DBforPostgreSQL/flexibleServers"
-    name      = "cpu_percent"
-    statistic = "Average"
-  }
+  severity    = 2
+  frequency   = "PT5M"
+  window_size = "PT15M"
 
-  threshold           = 80
-  comparison_operator = "GreaterThanThreshold"
-  period_minutes      = 5
+  metric_namespace = "Microsoft.DBforPostgreSQL/flexibleServers"
+  metric_name      = "cpu_percent"
+  aggregation      = "Average"
+  operator         = "GreaterThanOrEqual"
+  threshold        = 80
 }
 ```
 
-## cloudwatch-alarm Module Arguments
+## Custom alarms (no module)
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `md_metadata` | Yes | Massdriver metadata variable |
-| `alarm_name` | Yes | CloudWatch alarm name |
-| `display_name` | Yes | Label shown in Massdriver UI |
-| `message` | Yes | Alarm description |
-| `sns_topic_arn` | Yes | SNS topic from alarm_channel module |
-| `namespace` | Yes | AWS metric namespace (AWS/RDS, AWS/EC2, etc.) |
-| `metric_name` | Yes | Metric name |
-| `statistic` | Yes | Average, Sum, Maximum, etc. |
-| `period` | Yes | Evaluation period in seconds |
-| `comparison_operator` | Yes | GreaterThanThreshold, LessThanThreshold, etc. |
-| `evaluation_periods` | Yes | Number of periods to evaluate |
-| `threshold` | Yes | Alert trigger value |
-| `dimensions` | Yes | Metric dimensions (map) |
+For providers or cases the modules don't cover, the underlying pattern is: a cloud alarm that notifies `var.md_metadata.observability.alarm_webhook_url`, plus a `massdriver_instance_alarm` resource registering it with the instance (`display_name`, `cloud_resource_id`, optional `comparison_operator`/`threshold`/`period`/`metric` block — see the provider docs for the schema). `instance_id` is inferred automatically inside a Massdriver deployment.
