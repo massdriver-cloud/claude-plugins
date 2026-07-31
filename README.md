@@ -101,7 +101,7 @@ The plugin drives the Massdriver control plane through the official MCP server (
 
 ## What This Plugin Does
 
-This plugin helps platform engineers create and test Massdriver v2 bundles — reusable IaC modules that package OpenTofu, Terraform, or Helm with input schemas, resource type contracts, and operational policies.
+This plugin helps platform engineers create and test Massdriver bundles — reusable IaC modules that package OpenTofu, Terraform, or Helm with input schemas, resource type contracts, and operational policies.
 
 **Capabilities:**
 - **MCP-native operations**: Auto-registers the Massdriver MCP server; all control-plane work uses typed tools instead of shelling out
