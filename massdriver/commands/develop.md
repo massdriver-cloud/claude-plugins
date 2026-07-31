@@ -14,7 +14,7 @@ Start the bundle-dev agent to guide you through creating and testing a Massdrive
 
 ## What This Does
 
-1. **Setup** - Verify MCP auth (`get_viewer`), ask for CLI profile, and select/create the target project + environment (MCP `create_project` / `create_environment`)
+1. **Setup** - Verify MCP auth (`get_viewer`) and select/create the target project + environment (MCP `create_project` / `create_environment`)
 2. **Gather requirements** - Understand your use case, developer UX needs, and compliance strategy
 3. **Scaffold bundle** - Create massdriver.yaml, Terraform code, and supporting files
 4. **Publish bundle** (CLI) - `mass bundle publish --development`

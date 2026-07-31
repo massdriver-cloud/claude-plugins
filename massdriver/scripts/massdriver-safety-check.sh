@@ -257,7 +257,7 @@ check_bash() {
           shift 3
           local dev=""
           for tok in "$@"; do
-            case "$tok" in --development|-d) dev=1 ;; esac
+            case "$tok" in --development|-d|--help|-h) dev=1 ;; esac
           done
           if [ -z "$dev" ]; then
             deny "Missing --development flag. Stable releases need human authorization. Use: mass bundle publish --development"

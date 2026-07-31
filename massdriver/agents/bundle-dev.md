@@ -33,15 +33,6 @@ whenToUse: |
   Bundle modification also triggers this agent for the test loop.
   </commentary>
   </example>
-tools:
-  - Bash
-  - Read
-  - Write
-  - Edit
-  - Glob
-  - Grep
-  - AskUserQuestion
-  - WebFetch
 model: sonnet
 ---
 
@@ -82,7 +73,9 @@ Components are added exactly once, at the project level (`add_component`) — ne
 
 Call `get_viewer` to verify the MCP server is connected and authenticated. It returns the current identity. If it fails, stop, report the exact error, and ask the user to fix their MCP setup (see the plugin README).
 
-Inform the user what persona the MCP server has authenticated as and confirm they want to proceed. If not, instruct the user to set the proper credentials.
+Call `mass whoami` to verify the CLI can connect and authenticate as the same entity.
+
+Inform the user what entity the MCP server and CLI have authenticated as and confirm they want to proceed. If not, instruct the user to set the proper credentials and restart.
 
 ### Step 2: Project & Environment
 
@@ -112,7 +105,7 @@ Before any deploy work, check the environment has cloud credentials assigned as 
 If missing, tell the user:
 > "This environment has no cloud credential defaults. Please set one up via the UI, or I can bind an existing credential resource: share it with `create_resource_grant`, then `set_environment_default`."
 
-Wait for confirmation.
+Wait for confirmation. DO NOT select and set a credential without user confirmation.
 
 ### Error Recovery
 
@@ -180,14 +173,14 @@ Based on requirements, create:
    ├── operator.md
    └── src/
        ├── main.tf
-       ├── artifacts.tf
+       ├── resources.tf
        └── .checkov.yml
    ```
 
 2. **massdriver.yaml** with:
    - Params with presets (`examples`)
    - Connections (dependencies)
-   - Artifacts (outputs — still called `artifacts:` in YAML even though they're "resources" at runtime)
+   - Resources (outputs — still called `artifacts:` in YAML even though they're "resources" at runtime)
    - UI ordering
    - Steps config with `halt_on_failure` expression
 
@@ -283,7 +276,7 @@ This is the core iteration cycle.
 1. Make code changes to the bundle
 2. **ALWAYS publish after changes** (CLI): `mass bundle publish --development`
 3. Redeploy (MCP `create_deployment`), three flavors:
-   - **(a) Reuse last config exactly** (just pick up the new bundle release): omit `params`, message `"Pick up bundle update"`
+   - **(a) Reuse last config exactly** `get_instance` to read current params, pass them exactly as the deployment params
    - **(b) Surgical field edits**: `get_instance` to read current params, change the specific fields, pass the full updated object as `params`
    - **(c) Replace the entire config**: pass the new preset as `params`
 4. Watch with `get_deployment_logs follow:true`, always.

@@ -105,6 +105,8 @@ check "non-mass command untouched"               pass  "$(bashcmd 'tofu plan -ou
 check "compound cmd hides publish"               deny  "$(bashcmd 'echo hi && mass bundle publish')"
 check "env-var prefixed mass cmd"                deny  "$(bashcmd 'MASSDRIVER_PROFILE=x mass bundle publish')"
 check "massive not mass"                         pass  "$(bashcmd 'massive-tool run mass-transit')"
+check "publish --help is read-only"              pass  "$(bashcmd 'mass bundle publish --help')"
+check "publish -h in compound cmd"               pass  "$(bashcmd 'grep -rl x . 2>/dev/null; echo ---; mass bundle publish -h 2>&1 | head -60')"
 
 ### Custom production_pattern from .claude/massdriver.local.md ###
 mkdir -p "$WORKDIR/.claude"
