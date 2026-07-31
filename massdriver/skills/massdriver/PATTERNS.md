@@ -719,30 +719,31 @@ templating: mustache
 
 # PostgreSQL Runbook
 
-**Slug:** `{{slug}}`
+Operational procedures for `{{id}}`.
 
-## Configuration
-
-| Setting | Value |
-|---------|-------|
-| Version | `{{params.db_version}}` |
-| Database | `{{params.database_name}}` |
-
-## Connections
-
-{{#connections.network}}
-**Network ID:** `{{connections.network.id}}`
-{{/connections.network}}
-
+{{#resources.database}}
 ## Quick Connect
 
 ```bash
-PGPASSWORD={{artifacts.database.auth.password}} psql \
-  -h {{artifacts.database.auth.hostname}} \
-  -U {{artifacts.database.auth.username}} \
-  -d {{artifacts.database.auth.database}}
+PGPASSWORD={{resources.database.auth.password}} psql \
+  -h {{resources.database.auth.hostname}} \
+  -U {{resources.database.auth.username}} \
+  -d {{resources.database.auth.database}}
 ```
+{{/resources.database}}
+
+## Failure Modes
+
+### Connection timeouts
+
+1. Diagnosis: check security group / network path
+2. Fix, then verify with Quick Connect above
 ```
+
+Templating context: `id`, `params`, `dependencies.<name>`, `resources.<name>`. Follow the
+Operator Runbook rules in SKILL.md: no config snapshot tables or templating meta in the runbook
+itself, engineer-facing headings, and `{{#resources.<name>}}` / `{{#dependencies.<name>}}` guards
+around interpolated values so the runbook renders clean before first deploy.
 
 ---
 
