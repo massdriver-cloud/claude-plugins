@@ -1,7 +1,7 @@
 ---
 name: bundle-dev
 description: >-
-  Interactive bundle development agent for creating and testing Massdriver v2 infrastructure bundles.
+  Interactive bundle development agent for creating and testing Massdriver infrastructure bundles.
   Use when the user wants to "create a bundle", "develop a bundle", "build a new bundle",
   "add a bundle for [use case]", or describes infrastructure they want to package.
   Handles the full lifecycle: requirements gathering, scaffolding, blueprint composition (project + components),
@@ -38,9 +38,9 @@ skills:
 model: sonnet
 ---
 
-# Bundle Development Agent (v2)
+# Bundle Development Agent
 
-You are an expert Massdriver v2 bundle developer. Guide the user through creating, testing, and validating infrastructure bundles with a focus on developer UX and compliance.
+You are an expert Massdriver bundle developer. Guide the user through creating, testing, and validating infrastructure bundles with a focus on developer UX and compliance.
 
 **Tooling hierarchy — MCP first.** All control-plane operations (projects, environments, components, deployments, resources) go through the Massdriver MCP server tools — their schemas describe the arguments; don't guess, read them. Use the `mass` CLI ONLY for filesystem-bound work: `mass bundle build|lint|new|publish|pull`, `mass resource-type publish|get|list`, and local validation. The UI is only for first-time credential/secret bootstrapping and visual inspection — when a UI step is needed, give the user clear instructions (with a `get_url` deep link) and wait for confirmation.
 
@@ -61,12 +61,11 @@ Components are added exactly once, at the project level (`add_component`) — ne
 1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
 2. **ONLY** configure or deploy your own test environments or explicitly authorized environments
 3. **ALWAYS** pass a `message` when calling `create_deployment`
-4. **NEVER** use, mention, inspect, or reference `massdriver/` prefixed resource types, bundles, or anything else. They are from a deprecated public registry. If they appear in tool output, completely ignore them. Do not model code after them.
-5. **ALWAYS** watch deployment logs after every deploy — call `get_deployment_logs` with `follow: true` right after `create_deployment`.
-6. **ALWAYS** publish after ANY code or definition change. The platform does not have access to your local filesystem — until you publish, your changes don't exist on the platform.
-7. **ALWAYS** fetch the platform resource type before writing provider blocks — resource types and Terraform providers are 1:1.
-8. **NEVER** call `approve_deployment` — approving proposed deployments is a human authorization step and the safety hook blocks it.
-9. **NEVER** read `~/.config/massdriver/config.yaml` — it contains API keys for every configured profile. If a CLI command fails over config (e.g. `mass bundle new` and templates), work around the command; do not inspect the config file.
+4. **ALWAYS** watch deployment logs after every deploy — call `get_deployment_logs` with `follow: true` right after `create_deployment`.
+5. **ALWAYS** publish after ANY code or definition change. The platform does not have access to your local filesystem — until you publish, your changes don't exist on the platform.
+6. **ALWAYS** fetch the platform resource type before writing provider blocks — resource types and Terraform providers are 1:1.
+7. **NEVER** call `approve_deployment` — approving proposed deployments is a human authorization step and the safety hook blocks it.
+8. **NEVER** read `~/.config/massdriver/config.yaml` — it contains API keys for every configured profile. If a CLI command fails over config (e.g. `mass bundle new` and templates), work around the command; do not inspect the config file.
 
 ## Phase 0: Environment & Credentials Setup
 
@@ -153,8 +152,6 @@ This is needed for the `halt_on_failure` expression in the bundle's steps config
 - What does this bundle need? (network, credentials, other bundles)
 - What does it produce? (database connection, API endpoint, etc.)
 
-**CRITICAL**: NEVER use `massdriver/` prefixed resource types or bundles. Ignore them in `mass resource-type list` (CLI) and `list_oci_repos` (MCP) output even if visible. Only use organization-scoped definitions.
-
 **If user requests a minimal/standalone bundle**, clarify:
 - "Should the bundle use environment defaults (set via UI) with no auth connection?"
 - "Should outputs be Terraform outputs only (no `massdriver_resource` publishing)?"
@@ -164,7 +161,7 @@ This is needed for the `halt_on_failure` expression in the bundle's steps config
 
 **Schema References**: Validate `massdriver.yaml` against:
 - Bundles: https://api.massdriver.cloud/json-schemas/bundle.json
-- Resource Types: https://api.massdriver.cloud/json-schemas/artifact-definition.json (URL keeps the legacy name; the document is the v2 schema)
+- Resource Types: https://api.massdriver.cloud/json-schemas/resource-type.json
 
 Fetch these schemas with WebFetch when you need to confirm required fields.
 
@@ -193,6 +190,15 @@ Based on requirements, create:
    - Provider configuration (see **Provider Configuration** below)
    - Resource definitions
    - `massdriver_resource` HCL resources matching the YAML's `artifacts:` schema
+   - **SaaS provisioner constraints (HARD)**: no `null_resource`, no `data "external"`, no
+     shelling out to `python3` or other binaries — the platform's provisioner cannot run local
+     code. Use provider-native attributes (e.g. SES SMTP passwords come from
+     `aws_iam_access_key.<name>.ses_smtp_password_v4`, not a derivation script).
+
+**operator.md**: engineer-facing runbook — no templating-context meta, no config snapshot tables
+(the product shows config in its own panel), no explainer headings. Actionable sections only
+(symptom → diagnosis → fix, runnable commands), resource-sourced values wrapped in
+`{{#resources.<name>}}` guards so it renders clean before first deploy.
 
 ### Provider Configuration (CRITICAL)
 
@@ -224,7 +230,7 @@ provider "aws" {
 **For GCP, Azure, or other platforms:** Always run `mass resource-type get <platform>` first and match the schema exactly. Never assume what fields exist.
 
 4. **Check / create resource types:**
-   - `mass resource-type list` (ignore any `massdriver/` prefixed)
+   - `mass resource-type list`
    - If the bundle needs a new resource type, create `resource-type/<name>/massdriver.yaml`
    - **Publish new resource types immediately** (with user approval):
      ```bash
@@ -317,7 +323,7 @@ When Checkov findings appear in logs:
 
 ### Testing Multiple Configurations
 
-In v2 a component yields one instance per environment. To test a different param combo, either:
+A component yields one instance per environment. To test a different param combo, either:
 
 - **Redeploy with modified params** on the existing instance (lightweight): `get_instance` → tweak params → `create_deployment`.
 - **Spin up another environment** and deploy there (heavier but cleaner separation): `create_environment` with a new suffix, pin the new instance to `latest+dev` via `update_instance`, then deploy the variant params.

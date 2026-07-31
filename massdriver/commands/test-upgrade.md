@@ -34,7 +34,7 @@ Specify the instance slug and target version:
 /massdriver:test-upgrade ecomm-production-redis 2.0.0
 ```
 
-Instance slugs follow the v2 format: `{project}-{environment}-{component}` (e.g., `api-prod-database`).
+Instance slugs follow the format: `{project}-{environment}-{component}` (e.g., `api-prod-database`).
 
 If the slug or version aren't specified, the agent will ask.
 

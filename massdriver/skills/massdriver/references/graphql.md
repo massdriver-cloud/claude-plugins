@@ -1,6 +1,6 @@
-# GraphQL v2 API Reference
+# GraphQL API Reference
 
-Massdriver v2 exposes a GraphQL API at `https://api.massdriver.cloud/graphql/v2`. The full schema is at `https://api.massdriver.cloud/graphql/v2/schema.graphql`.
+Massdriver exposes a GraphQL API at `https://api.massdriver.cloud/graphql/v2`. The full schema is at `https://api.massdriver.cloud/graphql/v2/schema.graphql`.
 
 **Every operation is available as an MCP tool — use those.** GraphQL's remaining value is reads: one query spanning several related entities (a project plus its components, links, environments, and instances) beats a chain of tool calls. This document covers those queries plus shared conventions.
 

@@ -2,8 +2,8 @@
 
 Complete examples for bundles, resource types, and platforms. Use these for copy-paste and learning.
 
-> **Naming note (v2):**
-> - Schema contracts are **resource types**, and they live in `resource-type/<name>/massdriver.yaml`. Some existing repositories (e.g. the catalog) use an `artifact-definitions/` directory instead — both work; new bundles should use `resource-type/`.
+> **Naming note:**
+> - Schema contracts are **resource types**, and they live in `resource-type/<name>/massdriver.yaml`.
 > - The Terraform provider's HCL resource is `massdriver_resource`.
 > - The bundle YAML keeps the section keys `params:`, `connections:`, and `artifacts:` — those are unchanged.
 > - At runtime they are "resources" (MCP tools `get_resource` / `export_resource` / `create_resource`). The "artifact" you write in HCL becomes a "resource" at deploy time.
@@ -370,7 +370,7 @@ ui:
 
 ## Resource Type Patterns (a.k.a. Artifact Definitions)
 
-Resource types live in `resource-type/<name>/massdriver.yaml` (legacy repos may use `artifact-definitions/` — both are accepted). They define schema contracts for data passed between bundles.
+Resource types live in `resource-type/<name>/massdriver.yaml`. They define schema contracts for data passed between bundles.
 
 **Directory structure:**
 ```
@@ -696,7 +696,7 @@ provider "aws" {
 }
 ```
 
-**Environment Defaults Flow (v2):**
+**Environment Defaults Flow:**
 1. Admin creates AWS credential resource via platform UI form (or `create_resource` MCP tool)
 2. Admin sets it as default for the production environment: `set_environment_default` (share to the environment with `create_resource_grant` first)
 3. The blueprint includes a component for the RDS bundle (`add_component`)
@@ -719,30 +719,31 @@ templating: mustache
 
 # PostgreSQL Runbook
 
-**Slug:** `{{slug}}`
+Operational procedures for `{{id}}`.
 
-## Configuration
-
-| Setting | Value |
-|---------|-------|
-| Version | `{{params.db_version}}` |
-| Database | `{{params.database_name}}` |
-
-## Connections
-
-{{#connections.network}}
-**Network ID:** `{{connections.network.id}}`
-{{/connections.network}}
-
+{{#resources.database}}
 ## Quick Connect
 
 ```bash
-PGPASSWORD={{artifacts.database.auth.password}} psql \
-  -h {{artifacts.database.auth.hostname}} \
-  -U {{artifacts.database.auth.username}} \
-  -d {{artifacts.database.auth.database}}
+PGPASSWORD={{resources.database.auth.password}} psql \
+  -h {{resources.database.auth.hostname}} \
+  -U {{resources.database.auth.username}} \
+  -d {{resources.database.auth.database}}
 ```
+{{/resources.database}}
+
+## Failure Modes
+
+### Connection timeouts
+
+1. Diagnosis: check security group / network path
+2. Fix, then verify with Quick Connect above
 ```
+
+Templating context: `id`, `params`, `dependencies.<name>`, `resources.<name>`. Follow the
+Operator Runbook rules in SKILL.md: no config snapshot tables or templating meta in the runbook
+itself, engineer-facing headings, and `{{#resources.<name>}}` / `{{#dependencies.<name>}}` guards
+around interpolated values so the runbook renders clean before first deploy.
 
 ---
 

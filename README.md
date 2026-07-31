@@ -88,6 +88,19 @@ Generate a bundle without the deploy loop.
 /massdriver:gen RDS MySQL for OLTP workloads
 ```
 
+### `/massdriver:architect` - Citizen Engineer App Design (experimental)
+
+Turn a plain-language app idea into a governed Massdriver project: the agent probes the
+(grant-filtered) platform catalog, recommends project layout/bundles/runtime (decisively — it
+states its reasoning rather than asking), builds and publishes the app bundle directly to the
+platform, and promotes through environments gated by your permissions. If a needed capability
+has no granted bundle, it tells the user exactly what to request from their DevOps team instead
+of improvising infrastructure.
+
+```
+/massdriver:architect a serverless API that resizes uploaded images and stores them in S3
+```
+
 ## How It Works
 
 The plugin drives the Massdriver control plane through the official MCP server (100 tools):
@@ -109,12 +122,12 @@ This plugin helps platform engineers create and test Massdriver bundles — reus
 - **Upgrade testing**: Validate version upgrades against production configs (`fork_environment` + `copy_instance`, verified with `compare_environments`)
 - **Safety guardrails**: Blocks non-development publishes and production-targeting writes — across BOTH `mass` CLI commands and MCP tool calls, including automated deployment approval
 - **Compliance automation**: Iterates until Checkov findings are resolved
-- **GraphQL v2 reference**: Multi-entity queries for when one query beats a chain of tool calls
+- **GraphQL reference**: Multi-entity queries for when one query beats a chain of tool calls
 
 ## When It Activates
 
 The plugin auto-activates when:
-- Working in `bundles/`, `resource-type/` (or legacy `artifact-definitions/`), `platforms/`, or `projects/` directories
+- Working in `bundles/`, `resource-type/`, `platforms/`, or `projects/` directories
 - Editing `massdriver.yaml` files
 - Asking about bundles, resource types, components, instances, connections, or Massdriver patterns
 - Requesting to create, develop, or test bundles
@@ -134,9 +147,11 @@ claude-plugins/
     │   ├── massdriver-safety-check.sh  # Deterministic PreToolUse guard (CLI + MCP)
     │   └── test-safety-check.sh    # Test suite for the safety guard
     ├── agents/
-    │   ├── bundle-dev.md           # Full development workflow (v2)
-    │   └── upgrade-tester.md       # Day 2 upgrade testing (v2)
+    │   ├── architect.md            # Citizen-engineer project design (experimental)
+    │   ├── bundle-dev.md           # Full development workflow
+    │   └── upgrade-tester.md       # Day 2 upgrade testing
     ├── commands/
+    │   ├── architect.md            # /massdriver:architect
     │   ├── develop.md              # /massdriver:develop
     │   ├── test-upgrade.md         # /massdriver:test-upgrade
     │   └── gen.md                  # /massdriver:gen
@@ -146,7 +161,7 @@ claude-plugins/
     │   └── massdriver.local.md     # Settings template
     └── skills/
         └── massdriver/
-            ├── SKILL.md            # Core knowledge (v2 mental model + workflows)
+            ├── SKILL.md            # Core knowledge (mental model + workflows)
             ├── PATTERNS.md         # Bundle and resource type examples
             ├── snippets/           # Copy-paste templates
             └── references/
@@ -220,10 +235,44 @@ Needs AWS credentials, produces an S3 bucket resource.
 
 The agent will ask about your production naming convention, what to copy from prod (secrets, remote refs, env defaults), and whether to mirror or low-scale dependency components.
 
+## Local Development & Testing (plugin contributors)
+
+Test plugin changes straight from a working tree — no publish, no reinstall, nothing lands in `main`:
+
+```bash
+# 1. Work on a branch so main stays clean
+git checkout -b my-change
+
+# 2. Disable the marketplace-installed copy so it can't shadow your local one
+claude plugin disable massdriver
+
+# 3. Launch a session that loads the plugin from disk (this session only)
+claude --plugin-dir /path/to/claude-plugins/massdriver
+```
+
+The MCP server registers from the local plugin too (Docker still required — see Installation).
+
+Smoke test inside that session:
+- `/mcp` — confirm the `massdriver` server is listed with its tools
+- Run a command (e.g. `/massdriver:develop ...`) and confirm it routes to the right agent
+- `/agents` — confirm the plugin's agents are registered
+- Try `mass bundle publish` (no `-d`) — the safety hook should block it (`scripts/test-safety-check.sh` runs the full policy suite)
+
+**Iterate:** `--plugin-dir` reads the live directory, so edit files → restart the session → retest. No republish cycle.
+
+Validate manifests anytime:
+
+```bash
+claude plugin validate ./massdriver   # plugin.json
+claude plugin validate .              # marketplace.json
+```
+
+When you're done: `claude plugin enable massdriver` to restore the installed copy. To ship: PR the branch into `main`, bump `version` in `massdriver/.claude-plugin/plugin.json`, merge; installed copies pick it up with `claude plugin update massdriver` (restart required).
+
 ## Requirements
 
 - Docker (runs the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server) — see Installation)
-- [Massdriver CLI v2](https://docs.massdriver.cloud/cli/overview) (`mass`) — for bundle/resource-type publishing and local builds
+- [Massdriver CLI](https://docs.massdriver.cloud/cli/overview) (`mass`) — for bundle/resource-type publishing and local builds
 - OpenTofu or Terraform
 - A Massdriver account, with either an API key exported (`MASSDRIVER_API_KEY` + `MASSDRIVER_ORGANIZATION_ID`) or a profile in `~/.config/massdriver/config.yaml`
 
