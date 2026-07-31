@@ -101,12 +101,14 @@ Ask the user:
 
 The resulting environment identifier is `<project>-<AGENT_ENV>` (e.g. `ecomm-agentx7k2m9`).
 
-### Step 3: Verify Cloud Credentials
+### Step 3: Verify Cloud Credentials & Grants
 
-Before any deploy work, check the environment has cloud credentials assigned as defaults: call `get_environment` and look at its defaults.
+Before any deploy work, verify the environment can actually authenticate to the cloud:
 
-If missing, tell the user:
-> "This environment has no cloud credential defaults. Please set one up via the UI, or I can bind an existing credential resource: share it with `create_resource_grant`, then `set_environment_default`."
+1. Call `get_environment` and check its defaults for a cloud credential.
+2. If a default exists, verify the credential resource's grant covers this environment: `list_resource_grants` on the resource. A default with a missing/revoked grant will fail at deploy time.
+3. If the default or grant is missing, tell the user:
+> "This environment has no working cloud credential. Please set one up via the UI, or I can bind an existing credential resource: share it with `create_resource_grant`, then `set_environment_default`."
 
 Wait for confirmation. DO NOT select and set a credential without user confirmation.
 
@@ -238,6 +240,8 @@ provider "aws" {
    mass bundle lint
    cd src && tofu init && tofu validate
    ```
+
+6. **Before the FIRST publish — ensure the bundle's repository exists and is granted** (MCP): `get_oci_repo` with the bundle name. If it doesn't exist, create it with `create_oci_repo` (`artifact_type: BUNDLE`). Then verify the repository has a grant covering the target project (`list_oci_repo_grants`) — without one `add_component` will fail in Phase 3. Create it with `create_oci_repo_grant`. Only new bundles need this step.
 
 ### After ANY Change — PUBLISH
 
