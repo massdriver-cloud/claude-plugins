@@ -184,7 +184,7 @@ mutation {
 }
 ```
 
-`releaseStrategy` is the enum `stable | development` (note the CLI flag mirrors this lowercase form).
+`releaseStrategy` is the enum `stable | development`. On the CLI this is expressed in the version string instead — `mass instance version <slug>@latest+dev` for development, `@latest` for stable (there is no CLI flag for it).
 
 ### Copy configuration between instances
 
