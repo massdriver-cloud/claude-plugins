@@ -4,24 +4,24 @@ templating: mustache
 
 # <Bundle Name> Runbook
 
-Operational procedures for `{{slug}}`. Every section is written for the engineer on call:
+Operational procedures for `{{id}}`. Every section is written for the engineer on call:
 symptom → diagnosis → fix, with runnable commands.
 
 ## Health Check
 
 ```bash
 # Replace with the fastest command that proves this instance is healthy
-aws rds describe-db-instances --db-instance-identifier {{artifacts.my_artifact.id}} \
+aws rds describe-db-instances --db-instance-identifier {{resources.my_resource.id}} \
   --query 'DBInstances[0].DBInstanceStatus'
 ```
 
-{{#connections.database}}
+{{#dependencies.database}}
 ## Connect to the Database
 
 ```bash
-psql -h {{connections.database.auth.hostname}} -d {{connections.database.auth.database}}
+psql -h {{dependencies.database.auth.hostname}} -d {{dependencies.database.auth.database}}
 ```
-{{/connections.database}}
+{{/dependencies.database}}
 
 ## Rotate Credentials
 

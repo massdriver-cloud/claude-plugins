@@ -198,7 +198,7 @@ Based on requirements, create:
 **operator.md**: engineer-facing runbook — no templating-context meta, no config snapshot tables
 (the product shows config in its own panel), no explainer headings. Actionable sections only
 (symptom → diagnosis → fix, runnable commands), resource-sourced values wrapped in
-`{{#artifacts.<name>}}` guards so it renders clean before first deploy.
+`{{#resources.<name>}}` guards so it renders clean before first deploy.
 
 ### Provider Configuration (CRITICAL)
 

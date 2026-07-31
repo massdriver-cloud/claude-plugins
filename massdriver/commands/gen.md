@@ -63,6 +63,9 @@ bundles/<bundle-name>/
 - **Params**: Focus on 3-5 developer-facing questions, use presets
 - **80/20 rule**: Cover common use cases, don't over-generalize
 - **Connections**: Use existing resource types (`mass resource-type list`)
+- **Runbook**: `operator.md` is engineer-facing — no templating-context meta or config snapshots
+  (the product has a config panel), no explainer headings; actionable ops sections with runnable
+  commands, resource-sourced values wrapped in `{{#resources.<name>}}` guards
 - **Artifacts**: Match the resource type's schema exactly (the YAML key is still `artifacts:`; runtime calls them resources)
 - **Provider**: `mass resource-type get <platform>` FIRST, then write provider using only those fields — resource types and providers are 1:1
 - **Compliance**: Default to secure settings, add `halt_on_failure` for prod
