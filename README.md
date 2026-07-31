@@ -155,13 +155,15 @@ claude-plugins/
 
 ## Safety Guardrails
 
-The plugin includes automatic safety hooks covering **both the CLI and the MCP tools**, which **hard block**:
+The plugin includes a deterministic safety hook (`scripts/massdriver-safety-check.sh`, no LLM in the loop) covering **both the CLI and the MCP tools**, which **hard blocks**:
 
 - `mass bundle publish` without the `--development` (`-d`) flag
 - Any CLI command or MCP mutation targeting a production environment: `create_deployment` / `propose_deployment` (`PROVISION` and `DECOMMISSION`), `update_instance`, instance secrets, remote references, `update_environment` / `delete_environment`, environment defaults, and prod-referencing resource mutations. **Plans are exempt** — `PLAN` deployments and `mass instance deploy --plan` are dry-runs and allowed on any environment, including production.
 - `approve_deployment` — always, regardless of target. Approving proposed deployments (including rollbacks) is a human authorization step; agents can propose, humans approve in the UI.
 
-Read-only operations (`get_*`, `list_*`, `compare_*`, `export_resource`, `get_deployment_logs`) are always allowed regardless of environment. Non-applying tools (`plan_deployment`, `rollback_deployment`, `reject_deployment`, `abort_deployment`) are allowed since they cannot change infrastructure without a human approval.
+Read-only MCP tools (`get_*`, `list_*`, `compare_*`, `evaluate_*`, `explain_*`) are auto-approved — no permission prompt, on any environment. `export_resource` still prompts since it returns unmasked secrets. Non-applying tools (`plan_deployment`, `rollback_deployment`, `reject_deployment`, `abort_deployment`) are allowed since they cannot change infrastructure without a human approval.
+
+The production pattern is substring-matched against the **environment segment** of slugs only — a component *named* `prodcache` in a test environment is not blocked, while an environment named `preprod` is. Anything the hook has no opinion on falls through to Claude Code's normal permission prompt. The policy is tested: `scripts/test-safety-check.sh`.
 
 ## Configuration
 

@@ -14,9 +14,18 @@ mass_profile: ""
 
 # Regex pattern to identify production environments
 # The plugin will BLOCK any CLI commands OR MCP tool calls targeting
-# environments matching this pattern
+# environments matching this pattern.
+#
+# The pattern is substring-matched against the ENVIRONMENT SEGMENT of a
+# slug only — never the whole slug and never free-text fields:
+#   - instance slug myapp-prod-db      -> env segment "prod"    -> blocked
+#   - env slug myapp-preprod           -> env segment "preprod" -> blocked (substring)
+#   - instance slug myapp-testa-prodcache -> env segment "testa" -> allowed
+#     (a component *named* prodcache does not trigger the guard)
+# Anchor the regex if you want exact matching: "^(prod|production)$"
+#
 # Examples:
-#   - "prod" matches: myapp-prod-db, production, prod-east
+#   - "prod" matches: myapp-prod-db, production, prod-east, preprod
 #   - "(prod|production)" matches: prod OR production
 #   - "prd-.*" matches: prd-east, prd-west
 production_pattern: (prod|production)
@@ -38,7 +47,9 @@ Environments matching the `production_pattern` above are protected across BOTH t
 - Cannot remove components/resources tied to a prod instance
 - `approve_deployment` is always blocked — approving proposed deployments is human-only
 
-Read-only operations (`get_*`, `list_*`, `compare_*`, `get_deployment_logs`, `export_resource`, etc.) are always allowed.
+Read-only operations (`get_*`, `list_*`, `compare_*`, `get_deployment_logs`, etc.) are auto-approved — they never trigger a permission prompt. `export_resource` is the one read that still prompts, since it returns unmasked secrets.
+
+This file is resolved relative to the session working directory (`<cwd>/.claude/massdriver.local.md`). Subagents or worktrees running from a different directory fall back to the default pattern unless the file exists there too.
 
 ## Test Environment Naming
 
