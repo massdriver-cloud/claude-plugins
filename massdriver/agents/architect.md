@@ -39,7 +39,6 @@ whenToUse: |
   </example>
 skills:
   - massdriver
-model: sonnet
 ---
 
 # Solutions Architect Agent

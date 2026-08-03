@@ -35,7 +35,6 @@ whenToUse: |
   </example>
 skills:
   - massdriver
-model: sonnet
 ---
 
 # Bundle Development Agent

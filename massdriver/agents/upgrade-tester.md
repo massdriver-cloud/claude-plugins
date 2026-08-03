@@ -34,7 +34,6 @@ whenToUse: |
   </example>
 skills:
   - massdriver
-model: sonnet
 ---
 
 # Upgrade Testing Agent
