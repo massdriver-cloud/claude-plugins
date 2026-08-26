@@ -2,7 +2,7 @@
 
 Build infrastructure bundles for [Massdriver](https://massdriver.cloud) — the internal developer platform that turns infrastructure-as-code into reusable, self-service components with built-in guardrails.
 
-This plugin is **MCP-first**: all control-plane operations (projects, environments, components, deployments, resources) go through the [Massdriver MCP server](https://github.com/massdriver-cloud/mcp-server), which the plugin registers automatically. The **Massdriver CLI** (`mass`) is still required for filesystem-bound work — bundle build/lint/publish/pull and resource-type publishing.
+Describe what you want, and Claude designs the bundle, deploys it to a throwaway environment, and iterates until it's working and compliant. It drives Massdriver through the [MCP server](https://github.com/massdriver-cloud/mcp-server), which the plugin registers for you — that's why Docker is a prerequisite alongside the `mass` CLI.
 
 ## Installation
 
@@ -56,12 +56,12 @@ Interactive workflow for creating and testing bundles with deploy loop and compl
 **What it does:**
 1. Gathers your design intent (UX, constraints, connections)
 2. Scaffolds the bundle with best practices
-3. Sets up project + ephemeral test environment (MCP `create_project` / `create_environment`)
-4. Adds the bundle as a component in the project's blueprint (MCP `add_component`)
-5. Pins the test instance to the development channel (MCP `update_instance`, version `latest+dev`)
-6. Runs deploy loop: MCP `create_deployment` + `get_deployment_logs follow:true`, republishing via CLI as code changes
+3. Sets up a project and an ephemeral test environment
+4. Adds the bundle to the project's blueprint, so every environment gets an instance
+5. Deploys it, streaming the logs as they happen
+6. Iterates: code change → republish → redeploy, until it works
 7. Remediates compliance findings automatically
-8. Journals results in the environment description (MCP `update_environment`)
+8. Tears the infrastructure down, then journals what was tested on the environment
 
 ### `/massdriver:test-upgrade` - Day 2 Upgrade Testing
 
@@ -74,11 +74,11 @@ Validate bundle version upgrades by forking the production environment and copyi
 Instance identifier format `{project}-{environment}-{component}`.
 
 **What it does:**
-1. Forks the source instance's environment with `fork_environment`, carrying prod's component config (secrets/remote refs/env defaults opt-in)
-2. Verifies the mirror with `compare_environments`, low-scaling non-critical dependencies via `copy_instance` overrides
-3. Deploys the current version as a baseline (`create_deployment`)
-4. Bumps the version (`update_instance`), redeploys, and audits the change with `compare_deployments`
-5. Reports success/failure with recommendations (including `rollback_deployment` as the day-2 escape hatch), then tears down with `decommission_environment`
+1. Forks production into a test environment, carrying its config across (secrets, remote references, and environment defaults are opt-in)
+2. Diffs the fork against prod to confirm it's a faithful mirror, low-scaling any dependencies that don't need to match
+3. Deploys the current version as a baseline
+4. Bumps to the target version, redeploys, and reports exactly what changed — bundle version and param-level diff
+5. Tells you whether the upgrade is safe to roll out, then tears the test environment down
 
 ### `/massdriver:gen` - Quick Scaffolding
 
@@ -99,8 +99,8 @@ runs the matching workflow.
 ```
 
 **Three paths (you choose up front):**
-1. **New bundle** — author a new reusable bundle, publish it, add it as a component (MCP
-   `add_component`), then `tofu import` the resource into that instance's managed state.
+1. **New bundle** — author a new reusable bundle, publish it, add it to the blueprint, then
+   `tofu import` the resource into that instance's managed state.
 2. **Existing bundle** — reuse a published bundle, create/pick an undeployed instance, then
    import into its managed state.
 3. **Register resource only** — create an `EXTERNAL` Massdriver resource so other components can
@@ -110,9 +110,9 @@ Paths 1 and 2 put the resource under Massdriver's IaC management; path 3 only ma
 referenceable. Bundles have to stay reusable, so adoption uses the imperative `tofu import`
 command against the instance's Massdriver-managed HTTP state backend — **not `import {}`
 blocks**, which would hardcode one cloud resource ID into source shared by every instance. The
-import runs locally, but the plan runs in Massdriver's provisioner (`create_deployment` with
-`action: PLAN`), never `tofu plan` locally; the agent loops import → publish → re-plan until the
-plan is clean before anything is deployed.
+import runs locally, but the plan runs in Massdriver's provisioner — never `tofu plan` locally,
+where credentials and compliance checks don't apply. The agent loops import → publish → re-plan
+until the plan comes back clean, before anything is deployed.
 
 > Not to be confused with `mass bundle import`, which scans a bundle's IaC for variables not yet
 > exposed as Massdriver params.
@@ -132,24 +132,21 @@ of improvising infrastructure.
 
 ## How It Works
 
-The plugin drives the Massdriver control plane through the official MCP server (100 tools):
-
-- **Deploys**: `create_deployment` (`PROVISION`/`PLAN`/`DECOMMISSION`) + `get_deployment_logs` with `follow: true`. Params travel with each deployment call.
-- **Blueprint composition**: `add_component` / `link_components` — components are added once at the project level; every environment auto-gets an instance.
-- **Day 2 operations**: deployment approval flow (`propose_deployment` → human approves), `rollback_deployment`, `plan_deployment`, `compare_environments`, `compare_deployments`, instance secrets, remote references.
-- **Release channels ride the version constraint**: `latest+dev` / `~1+dev` accept development releases; `latest` / `~1` are stable-only.
-- **Environment-scale operations**: `fork_environment` (test envs from prod), `deploy_environment` / `decommission_environment` (whole-environment waves in dependency order), `copy_instance` (config mirroring with overrides).
-- **The CLI handles filesystem work**: `mass bundle build|lint|new|publish|pull`, `mass resource-type publish|get|list`, and `mass server`.
+- **Design once, deploy everywhere.** A component is added to a project's blueprint one time; every environment automatically gets an instance of it. Wire one component's output to another's input and the connection follows into each environment.
+- **Deploy and watch in one step.** Every deploy streams its logs back, so Claude sees failures and Checkov findings as they happen and can act on them without you relaying output.
+- **Dry runs are always safe.** Plans never touch infrastructure and are allowed anywhere, including production — so Claude can check its work before proposing a change.
+- **Development releases stay out of everyone's way.** Publishing with `--development` and pinning a test instance to `latest+dev` means your iteration never reaches instances on stable.
+- **Day 2 is covered.** Fork production into a test environment, upgrade it, diff the result, and roll back if it regresses. Changes that need sign-off can be *proposed* instead of applied, for a human to approve.
+- **Environment-scale operations.** Deploy or decommission a whole environment in dependency order, or mirror one instance's config onto another with overrides.
 
 ## What This Plugin Does
 
 This plugin helps platform engineers create and test Massdriver bundles — reusable IaC modules that package OpenTofu, Terraform, or Helm with input schemas, resource type contracts, and operational policies.
 
 **Capabilities:**
-- **MCP-native operations**: Auto-registers the Massdriver MCP server; all control-plane work uses typed tools instead of shelling out
 - **Interactive development**: Full deploy loop with compliance remediation
-- **Brownfield import**: Adopt existing cloud resources into bundles (`tofu import` against managed state) or register them as `EXTERNAL` resources
-- **Upgrade testing**: Validate version upgrades against production configs (`fork_environment` + `copy_instance`, verified with `compare_environments`)
+- **Brownfield import**: Adopt cloud resources that already exist into bundles, or register them so other components can connect to them
+- **Upgrade testing**: Validate version upgrades against a faithful copy of your production config before rolling them out
 - **Safety guardrails**: Blocks non-development publishes and production-targeting writes — across BOTH `mass` CLI commands and MCP tool calls, including automated deployment approval
 - **Compliance automation**: Iterates until Checkov findings are resolved
 - **GraphQL reference**: Multi-entity queries for when one query beats a chain of tool calls
