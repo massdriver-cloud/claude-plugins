@@ -88,6 +88,35 @@ Generate a bundle without the deploy loop.
 /massdriver:gen RDS MySQL for OLTP workloads
 ```
 
+### `/massdriver:import` - Import Existing Cloud Resources
+
+Bring cloud infrastructure that already exists (created by hand, by another IaC tool, or in
+another account) under Massdriver. The command asks **how** you want to import, then the agent
+runs the matching workflow.
+
+```
+/massdriver:import existing production RDS Postgres instance created by hand
+```
+
+**Three paths (you choose up front):**
+1. **New bundle** — author a new reusable bundle, publish it, add it as a component (MCP
+   `add_component`), then `tofu import` the resource into that instance's managed state.
+2. **Existing bundle** — reuse a published bundle, create/pick an undeployed instance, then
+   import into its managed state.
+3. **Register resource only** — create an `EXTERNAL` Massdriver resource so other components can
+   connect to it, with no IaC and no lifecycle management.
+
+Paths 1 and 2 put the resource under Massdriver's IaC management; path 3 only makes it
+referenceable. Bundles have to stay reusable, so adoption uses the imperative `tofu import`
+command against the instance's Massdriver-managed HTTP state backend — **not `import {}`
+blocks**, which would hardcode one cloud resource ID into source shared by every instance. The
+import runs locally, but the plan runs in Massdriver's provisioner (`create_deployment` with
+`action: PLAN`), never `tofu plan` locally; the agent loops import → publish → re-plan until the
+plan is clean before anything is deployed.
+
+> Not to be confused with `mass bundle import`, which scans a bundle's IaC for variables not yet
+> exposed as Massdriver params.
+
 ### `/massdriver:architect` - Citizen Engineer App Design (experimental)
 
 Turn a plain-language app idea into a governed Massdriver project: the agent probes the
@@ -119,6 +148,7 @@ This plugin helps platform engineers create and test Massdriver bundles — reus
 **Capabilities:**
 - **MCP-native operations**: Auto-registers the Massdriver MCP server; all control-plane work uses typed tools instead of shelling out
 - **Interactive development**: Full deploy loop with compliance remediation
+- **Brownfield import**: Adopt existing cloud resources into bundles (`tofu import` against managed state) or register them as `EXTERNAL` resources
 - **Upgrade testing**: Validate version upgrades against production configs (`fork_environment` + `copy_instance`, verified with `compare_environments`)
 - **Safety guardrails**: Blocks non-development publishes and production-targeting writes — across BOTH `mass` CLI commands and MCP tool calls, including automated deployment approval
 - **Compliance automation**: Iterates until Checkov findings are resolved
@@ -149,10 +179,12 @@ claude-plugins/
     ├── agents/
     │   ├── architect.md            # Citizen-engineer project design (experimental)
     │   ├── bundle-dev.md           # Full development workflow
+    │   ├── resource-import.md      # Import existing cloud resources
     │   └── upgrade-tester.md       # Day 2 upgrade testing
     ├── commands/
     │   ├── architect.md            # /massdriver:architect
     │   ├── develop.md              # /massdriver:develop
+    │   ├── import.md               # /massdriver:import
     │   ├── test-upgrade.md         # /massdriver:test-upgrade
     │   └── gen.md                  # /massdriver:gen
     ├── hooks/
@@ -167,7 +199,8 @@ claude-plugins/
             └── references/
                 ├── graphql.md      # GraphQL multi-entity queries
                 ├── alarms.md       # AWS/GCP/Azure monitoring
-                └── compliance.md   # Checkov remediation
+                ├── compliance.md   # Checkov remediation
+                └── import.md       # Importing existing cloud resources
 ```
 
 ## Safety Guardrails
