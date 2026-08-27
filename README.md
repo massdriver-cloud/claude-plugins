@@ -117,7 +117,7 @@ until the plan comes back clean, before anything is deployed.
 > Not to be confused with `mass bundle import`, which scans a bundle's IaC for variables not yet
 > exposed as Massdriver params.
 
-### `/massdriver:architect` - Citizen Engineer App Design (experimental)
+### `/massdriver:architect` - Citizen Developer App Design (experimental)
 
 Turn a plain-language app idea into a governed Massdriver project: the agent probes the
 (grant-filtered) platform catalog, recommends project layout/bundles/runtime (decisively — it
@@ -174,7 +174,7 @@ claude-plugins/
     │   ├── massdriver-safety-check.sh  # Deterministic PreToolUse guard (CLI + MCP)
     │   └── test-safety-check.sh    # Test suite for the safety guard
     ├── agents/
-    │   ├── architect.md            # Citizen-engineer project design (experimental)
+    │   ├── architect.md            # Citizen-developer project design (experimental)
     │   ├── bundle-dev.md           # Full development workflow
     │   ├── resource-import.md      # Import existing cloud resources
     │   └── upgrade-tester.md       # Day 2 upgrade testing
