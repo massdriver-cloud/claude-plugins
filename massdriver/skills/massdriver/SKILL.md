@@ -1,6 +1,6 @@
 ---
 name: massdriver
-description: Develop and test Massdriver infrastructure bundles. Operates in three modes - FULL (interactive deploy loop via /massdriver:develop), UPGRADE TESTING (day 2 validation via /massdriver:test-upgrade), or BUILD-ONLY (/massdriver:gen for local scaffolding). Auto-activates when working with massdriver.yaml, bundles/, resource-type/, platforms/, or projects/ directories. Use when creating bundles, modifying IaC, testing deployments, validating upgrades, or fixing compliance findings.
+description: Develop and test Massdriver infrastructure bundles. Operates in four modes - FULL (interactive deploy loop via /massdriver:develop), UPGRADE TESTING (day 2 validation via /massdriver:test-upgrade), BUILD-ONLY (/massdriver:gen for local scaffolding), or IMPORT (adopting existing cloud resources via /massdriver:import). Auto-activates when working with massdriver.yaml, bundles/, resource-type/, platforms/, or projects/ directories. Use when creating bundles, modifying IaC, testing deployments, validating upgrades, importing existing cloud resources, or fixing compliance findings.
 ---
 
 # Massdriver Bundle Development
@@ -29,6 +29,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 | **Full Development** | `/massdriver:develop <use-case>` | Creating/updating bundles with full test loop |
 | **Upgrade Testing** | `/massdriver:test-upgrade <bundle>` | Validating version upgrades against prod config |
 | **Quick Generation** | `/massdriver:gen <use-case>` | Scaffolding a bundle without deploy loop |
+| **Resource Import** | `/massdriver:import <resource>` | Adopting existing cloud infra (new bundle, existing bundle, or resource-only) |
 
 ## Reference Files
 
@@ -36,6 +37,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 - [references/graphql.md](./references/graphql.md) - GraphQL multi-entity queries
 - [references/alarms.md](./references/alarms.md) - Adding monitoring alarms (AWS/GCP/Azure)
 - [references/compliance.md](./references/compliance.md) - Post-deployment Checkov remediation
+- [references/import.md](./references/import.md) - Importing existing cloud resources (new bundle / existing bundle / resource-only)
 - [snippets/](./snippets/) - Copy-paste templates
 
 ## Safety Rules
@@ -140,6 +142,18 @@ Workflow:
 2. Generate bundle files
 3. `mass bundle build && tofu validate`
 4. Hand off to user
+
+### Import Mode
+**Command:** `/massdriver:import`
+**Use when:** Adopting cloud resources that already exist — created by hand, by another IaC tool,
+or in another account.
+
+Three paths, chosen up front: author a **new bundle**, reuse an **existing bundle**, or
+**register the resource only** as an `EXTERNAL` resource with no IaC. The two bundle paths adopt
+state with the imperative `tofu import` command against the instance's managed state — never
+`import {}` blocks, which would hardcode one cloud resource ID into source shared by every
+instance. Import runs locally; the plan runs in the provisioner via `create_deployment` with
+`action: PLAN`. See [references/import.md](./references/import.md).
 
 ---
 
@@ -734,4 +748,5 @@ mass version
 - [references/graphql.md](./references/graphql.md) - GraphQL multi-entity queries
 - [references/alarms.md](./references/alarms.md) - Monitoring alarms
 - [references/compliance.md](./references/compliance.md) - Checkov remediation
+- [references/import.md](./references/import.md) - Importing existing cloud resources
 - [snippets/](./snippets/) - Copy-paste templates
