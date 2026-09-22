@@ -106,23 +106,35 @@ supplies its own state configuration.
 
 ### Step 5: Give the provider enough config to read the resource
 
-`tofu import` runs locally, so the provider has to authenticate for real. Bundle provider blocks
-read credentials from a connection variable (e.g. `var.aws_authentication.arn`), which is empty
-on your machine. Build a throwaway variables file:
+`tofu import` runs locally, so the provider must authenticate for real — and the credentials
+Massdriver uses are frequently ones you **cannot** reproduce on your machine. The common case is
+an AWS role whose trust policy admits only Massdriver's provisioning role: it is *supposed* to be
+unassumable locally. A failure here is usually the design working, not a bug to engineer around.
 
-1. `mass bundle build` to generate `_massdriver_variables.tf`.
-2. Get the params: `get_instance` returns the instance's `params`.
-3. Get the credential: read the environment's default cloud credential resource
-   (`get_environment` → defaults). `export_resource` returns its payload including the role ARN
-   — it returns **unmasked secrets**, so confirm with the user before calling it and never echo
-   the result into the transcript.
-4. Write `import.auto.tfvars.json` in the step directory with `md_metadata`, the required
-   params, and the `<platform>_authentication` object. This file is throwaway — delete it after
-   the import and never publish or commit it.
-5. Your shell also needs ambient cloud credentials able to assume that role (e.g. `AWS_PROFILE`).
+Try the simple strategies in order and stop at the first that works:
 
-If assembling this is more trouble than it's worth for a one-off, say so and ask the user
-whether they'd rather run the import commands themselves with their own credentials.
+1. **Use the ambient credentials already in the shell** — `AWS_PROFILE`, `GOOGLE_APPLICATION_CREDENTIALS`,
+   an existing `az login`. If they can already read the resource, you need nothing else.
+2. **Point the provider at the local default credential chain.** Bundle provider blocks read from
+   a connection variable (e.g. `var.aws_authentication.arn`) that is empty on your machine.
+   Comment out that block and add a plain one alongside it. This is a **temporary local edit** —
+   see the warning below.
+3. **Assume the Massdriver role locally** — only if the user confirms it is assumable by them.
+   `get_environment` → defaults identifies the credential resource; `export_resource` returns its
+   payload including the role ARN. It returns **unmasked secrets**, so confirm before calling it
+   and never echo the result. Then `mass bundle build` and write a throwaway
+   `import.auto.tfvars.json` in the step directory with `md_metadata`, the required params, and
+   the `<platform>_authentication` object.
+
+**If none of those work, STOP and ask the user how they want to proceed.** Do not get creative:
+no probing for credential files, no enumerating profiles, no trying other roles, no inventing an
+authentication path. Report the exact provider error and offer to hand them the `tofu import`
+command to run with their own credentials.
+
+> **Revert every provider edit before ANY `mass bundle publish`** — including the republish loop
+> in Step 7, not just the cleanup in Step 8. A provider block rewritten for local credentials
+> that reaches the platform breaks every instance of the bundle. `backend_import.tf` and
+> `import.auto.tfvars.json` are throwaway on the same terms: never committed, never published.
 
 ### Step 6: Import, then plan through Massdriver
 
@@ -160,10 +172,12 @@ hook's production block precisely because they cannot change anything.
 If the plan proposes changes, the HCL doesn't match the live resource. Per iteration:
 
 1. Fix the HCL.
-2. `mass bundle publish --development` (the platform cannot see your filesystem).
-3. `update_instance` with version `latest+dev` so the instance resolves the release you just
+2. **Restore the real provider block** if Step 5 changed it, and confirm `backend_import.tf` and
+   `import.auto.tfvars.json` are not staged for publish.
+3. `mass bundle publish --development` (the platform cannot see your filesystem).
+4. `update_instance` with version `latest+dev` so the instance resolves the release you just
    published — otherwise the next plan runs the OLD version.
-4. `create_deployment` (`action: PLAN`) + `get_deployment_logs follow:true`.
+5. `create_deployment` (`action: PLAN`) + `get_deployment_logs follow:true`.
 
 **If the plan proposes destroying or replacing an imported resource, STOP.** That means the
 config diverges from reality in a way an apply would act on. Reconcile the HCL; never deploy
@@ -171,16 +185,18 @@ while the plan is dirty.
 
 ### Step 8: Clean up and hand off
 
-Delete `backend_import.tf` and `import.auto.tfvars.json`. The instance now has real state and a
-clean plan; the actual `PROVISION` deploy is a separate, human-authorized decision.
+Delete `backend_import.tf` and `import.auto.tfvars.json`, and restore the original provider
+block if Step 5 changed it. Diff the bundle against what you started with — nothing from the
+local import should survive. The instance now has real state and a clean plan; the actual
+`PROVISION` deploy is a separate, human-authorized decision.
 
 ### Recovering from a bad import
 
 - **Wrong resource imported**: `tofu state rm <resource.address>`, then re-import correctly.
 - **State lock stuck** (an interrupted run): `orphan_instance` can clear state locks, but it
   also resets the instance to `INITIALIZED`. Confirm with the user first.
-- **Import fails on provider auth**: that's Step 5, not a Massdriver problem. Report the exact
-  provider error and ask the user how they'd like to supply credentials.
+- **Import fails on provider auth**: expected when the Massdriver role is scoped to the
+  provisioner. Work the Step 5 ladder, then stop and ask. Do not improvise a credential path.
 
 ---
 

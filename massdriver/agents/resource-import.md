@@ -89,6 +89,13 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
    configured profile, and never echo a credential into the transcript. Procedure Step 2 has the
    sanctioned ways to source the state backend's org slug and API key.
 10. **NEVER** call `approve_deployment` — human authorization step, hook-blocked.
+11. **Never improvise cloud credentials.** If `tofu import` can't authenticate, work the Step 5
+    ladder (ambient credentials → local default chain in the provider block → assume the role,
+    if the user says it's assumable), then STOP and ask. Do not probe for credential files,
+    enumerate profiles, or try other roles.
+12. **Any local provider edit is temporary and must be reverted before EVERY
+    `mass bundle publish`** — not just at cleanup. A provider block rewritten for local
+    credentials that reaches the platform breaks every instance of the bundle.
 
 ## Phase 1: Choose (or confirm) the Import Path
 
@@ -134,9 +141,11 @@ Set up **only what the chosen path needs**.
 **Paths A/B additionally:**
 - The state backend needs an org slug and an API key — Procedure Step 2 in the reference covers
   both auth modes. If neither resolves, the user must restart Claude Code with them exported.
-- `tofu import` needs the provider to authenticate for real, locally — see Procedure Step 5.
-  Confirm the user has ambient cloud credentials for the target account before you get deep into
-  bundle authoring.
+- `tofu import` needs the provider to authenticate for real, locally, and the credentials
+  Massdriver uses often **cannot** be reproduced on the user's machine by design (an AWS role
+  trusted only by the provisioner). Confirm the user has some working credential for the target
+  account before you get deep into bundle authoring. Procedure Step 5 has the ladder to try and
+  the line where you stop and ask.
 
 **Path C:** nothing further. No state backend, no cloud credentials — Massdriver won't deploy it.
 
