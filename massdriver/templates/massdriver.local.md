@@ -7,7 +7,8 @@
 # These settings customize how the Massdriver plugin behaves.
 
 # Profile to use (from ~/.config/massdriver/config.yaml)
-# Used by the `mass` CLI for publish/build steps.
+# Used by the `mass` CLI for publish/build steps. Does NOT affect the MCP
+# server — see "Profile Configuration" below.
 # The agent will ask you at session start, but you can pre-set it here.
 # Leave blank to use default profile.
 mass_profile: ""
@@ -65,5 +66,15 @@ The plugin creates test environments with the pattern `agent<RANDOM>`:
 If you have multiple Massdriver CLI profiles, set `mass_profile` to the one
 this project should use. Profiles are defined in `~/.config/massdriver/config.yaml`.
 
-Alternatively, the agent will ask you at the start of each session.
-If using an alternate profile, the agent sets `MASSDRIVER_PROFILE=<name>`.
+Alternatively, the agent will ask you at the start of each session. For an
+alternate profile the agent prefixes each command — `MASSDRIVER_PROFILE=<name>
+mass bundle build` — because a standalone `export` does not survive between
+Bash calls.
+
+**This setting steers the `mass` CLI only.** The MCP server runs in a container
+started when Claude Code launches, and takes its profile from the environment at
+that moment. It never reads this file. If `mass_profile` names a different
+profile than the one Claude Code was launched with, the CLI and the control
+plane will target different organizations — the agent catches this by comparing
+`get_viewer` against `mass whoami` at session start. To re-point the MCP server,
+exit Claude Code, export `MASSDRIVER_PROFILE`, and start a new session.

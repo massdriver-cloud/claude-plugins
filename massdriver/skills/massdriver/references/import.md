@@ -60,21 +60,41 @@ Look at the bundle's `src/` for a `terraform { backend ... }` block:
   bundle is NOT on Massdriver-managed state. Stop and tell the user — import cannot proceed
   until state lives on Massdriver.
 
-### Step 2: Credentials for the state backend
+### Step 2: Resolve the state backend credentials
+
+> **Exports do not survive between Bash tool calls.** Each call is a fresh, non-persistent
+> shell — an `export` in one call is gone by the next. Steps 2-5 only *gather* values. Every
+> `TF_HTTP_*` assignment and the `tofu` commands that consume them go in **one** Bash
+> invocation, in Step 6. Do not run the exports as their own step; they will silently evaporate.
 
 The HTTP state backend authenticates with your **organization slug** and an **API key /
-service account token**:
+service account token**. Establish where each comes from:
 
-```bash
-export TF_HTTP_USERNAME="$MASSDRIVER_ORGANIZATION_ID"   # organization slug
-export TF_HTTP_PASSWORD="$MASSDRIVER_API_KEY"           # service account token
-```
+- **API-key auth** — `$MASSDRIVER_ORGANIZATION_ID` and `$MASSDRIVER_API_KEY` are already in the
+  environment (check with `[ -n "${MASSDRIVER_API_KEY:-}" ]`, never by printing them). Reference
+  them by name in Step 6 and never echo their values.
+- **Profile auth** — neither is set. Read the *active profile only*, inline, inside the Step 6
+  block:
 
-**NEVER read `~/.config/massdriver/config.yaml`** — it holds API keys for every configured
-profile. If those two variables are already exported in the shell, reference them as above and
-never echo their values. If they are not set (profile-based auth), ask the user to export them
-for this session; do not go looking for them. `get_viewer` confirms which organization the MCP
-server is authenticated to if you need to check the slug.
+  ```bash
+  mass config get -o json --show-secrets | jq -r .apiKey
+  ```
+
+  Never run this as a standalone command: its output would land in the transcript. It exists
+  only to be piped straight into a variable. It may require a Bash allowlist rule
+  (`mass config get:*`) or it will trip the permission prompt on every import.
+
+**NEVER read `~/.config/massdriver/config.yaml` directly** — it holds API keys for every
+configured profile. `mass config get` returns only the active one, which is why it is the
+sanctioned path.
+
+`get_viewer` confirms which organization the MCP server is authenticated to if you need to
+check the slug.
+
+If neither source resolves, ask the user to **restart Claude Code** with `MASSDRIVER_API_KEY`
+and `MASSDRIVER_ORGANIZATION_ID` exported. Claude Code inherits its environment at launch;
+there is no way to add a variable to a running session, so "export it for this session" is not
+something the user can do.
 
 ### Step 3: Get the instance's state URL
 
@@ -82,13 +102,8 @@ Call `get_instance` on the target instance. Its `statePaths` array gives one ent
 step, each with `stepName` (the step key from `massdriver.yaml`, commonly `src`) and
 `stateUrl` — the exact URL for that step's state. Use `stateUrl` verbatim; do not hand-build it.
 
-```bash
-export TF_HTTP_ADDRESS="<stateUrl for the step you're importing into>"
-export TF_HTTP_LOCK_ADDRESS="$TF_HTTP_ADDRESS"
-export TF_HTTP_UNLOCK_ADDRESS="$TF_HTTP_ADDRESS"
-```
-
-For a multi-step bundle, import each resource into the state of the step whose IaC declares it.
+Note the value for Step 6 — do not export it here. For a multi-step bundle, import each
+resource into the state of the step whose IaC declares it.
 
 ### Step 4: Select the http backend locally
 
@@ -127,11 +142,31 @@ whether they'd rather run the import commands themselves with their own credenti
 
 ### Step 6: Import, then plan through Massdriver
 
+Everything the backend needs must be set in the **same Bash call** as `tofu`, because exports
+do not persist between calls. One invocation, from the step directory:
+
 ```bash
+cd bundles/<bundle>/src
+
+# Credentials — pick ONE source (Step 2). Neither line echoes a secret.
+export TF_HTTP_USERNAME="$MASSDRIVER_ORGANIZATION_ID"
+export TF_HTTP_PASSWORD="$MASSDRIVER_API_KEY"
+# ...or, under profile auth:
+# export TF_HTTP_USERNAME="$(mass config get -o json | jq -r .organizationId)"
+# export TF_HTTP_PASSWORD="$(mass config get -o json --show-secrets | jq -r .apiKey)"
+
+# State URL — the `stateUrl` from Step 3, verbatim.
+export TF_HTTP_ADDRESS="<stateUrl>"
+export TF_HTTP_LOCK_ADDRESS="$TF_HTTP_ADDRESS"
+export TF_HTTP_UNLOCK_ADDRESS="$TF_HTTP_ADDRESS"
+
 tofu init
-tofu import <resource.address> <cloud-provider-id>   # once per resource
+tofu import <resource.address> <cloud-provider-id>   # repeat per resource, same call
 tofu state list                                      # verify what landed in state
 ```
+
+If a later `tofu` command is needed (a re-import, a `state rm`), it needs the full export
+preamble again — a bare `tofu` command in a fresh call will fail to reach the backend.
 
 Then verify the config matches reality by planning **in Massdriver's provisioner**:
 

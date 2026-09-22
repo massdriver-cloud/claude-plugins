@@ -31,6 +31,13 @@ export MASSDRIVER_URL="https://api.massdriver.cloud"  # optional; only for self-
 # MASSDRIVER_PROFILE=<name>.
 ```
 
+**Export before you launch Claude Code.** The MCP server is a container started once at
+session start, and it inherits these variables from the environment Claude Code itself was
+launched with. Nothing set afterwards can reach it — not a shell `export` (Claude Code's Bash
+calls are separate, non-persistent shells), and not `mass_profile` in
+`.claude/massdriver.local.md`, which only the agent reads. To change organization or profile,
+exit Claude Code, export, and start a new session.
+
 Optionally pre-pull before your first session to skip the initial download delay: `docker pull massdrivercloud/mcp-server`.
 
 Verify with `/mcp` in Claude Code — the `massdriver` server should be listed with its tools.
@@ -227,7 +234,7 @@ default_test_project: ""
 
 | Setting | Description |
 |---------|-------------|
-| `mass_profile` | Profile from `~/.config/massdriver/config.yaml`, used by the `mass` CLI. The MCP server reads the same file (mounted into its container) via `MASSDRIVER_PROFILE` |
+| `mass_profile` | Profile from `~/.config/massdriver/config.yaml`. **Steers the `mass` CLI only** — the MCP server's profile is fixed when Claude Code launches (see [MCP server setup](#mcp-server-setup)). Set both to the same profile, or the CLI and the control plane will target different organizations |
 | `production_pattern` | Regex to identify production environments (protected by hooks on both CLI and MCP calls) |
 | `organization_id` | Default org ID (optional, used when running raw GraphQL queries; the MCP server gets its org from its own env/profile) |
 | `default_test_project` | Where to create test environments (optional) |

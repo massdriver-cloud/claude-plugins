@@ -78,7 +78,10 @@ Do NOT include these fields (they cause linter warnings):
 ### Credentials/Profile
 
 - **MCP auth**: verify connectivity with `get_viewer` — it returns the authenticated identity. If it fails, stop, report the exact error, and ask the user to fix their MCP setup.
-- **CLI profile** (needed for publish/build steps): ask which profile to use. Default profile needs no action; for an alternate profile set `export MASSDRIVER_PROFILE=<name>` before every `mass` command.
+- **CLI auth**: run `mass whoami` and **compare it to `get_viewer`**. They are two independent credential paths and can silently disagree — the MCP server's profile is fixed at launch, while the CLI resolves a profile per command. If the organizations differ, STOP and tell the user: you would publish a bundle to one org and wire it up in another.
+- **CLI profile** (needed for publish/build steps): ask which profile to use. The default profile needs no action. For an alternate profile, prefix each command — `MASSDRIVER_PROFILE=<name> mass bundle build`. Do **not** run `export MASSDRIVER_PROFILE=<name>` as its own step: each Bash call is a fresh shell and the export is gone by the next call.
+- **Do not use the `--profile` flag.** It is a global flag; the safety hook reads the subcommand positionally, and while it now skips known global flags, the env-var prefix is the form the guards are built around. Prefer it.
+- Changing the profile does **not** re-point the MCP server. If the user needs the control plane on a different organization, they must exit Claude Code, export `MASSDRIVER_PROFILE` (or `MASSDRIVER_API_KEY` + `MASSDRIVER_ORGANIZATION_ID`), and start a new session. There is no way to change it mid-session.
 
 ### Project & Environment
 
@@ -108,7 +111,7 @@ If you encounter ANY auth, credential, CLI, or MCP connectivity issue: **stop an
 **Use when:** Testing bundles end-to-end, validating compliance, iterating on real infrastructure.
 
 Workflow:
-1. **Setup**: Verify MCP auth (`get_viewer`), ask for CLI profile, project, environment
+1. **Setup**: Verify MCP auth (`get_viewer`), cross-check CLI auth (`mass whoami` — same org?), ask for CLI profile, project, environment
 2. **Requirements**: Gather design intent interactively
 3. **Scaffold**: Generate bundle code
 4. **Publish** (CLI): `mass bundle publish --development` (and `mass resource-type publish` for any new resource types)

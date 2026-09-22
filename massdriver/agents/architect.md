@@ -98,6 +98,10 @@ UI step is needed, give the user clear instructions (with a `get_url` deep link)
 
 **MANDATORY. Do not skip. Do not guess.**
 
+0. Run `mass whoami` and compare it to `get_viewer` below. The CLI and the MCP server
+   authenticate independently and can target different organizations — the MCP server's profile
+   is fixed at launch, the CLI resolves one per command. If they disagree, STOP and tell the
+   user; publishing to one org while wiring components in another produces a broken project.
 1. Call `get_viewer` to verify the MCP server is connected and authenticated; tell the user what
    identity you're operating as and confirm.
 2. Ask which environment to design/deploy into: an existing `<project>-<env>`, or a fresh one to

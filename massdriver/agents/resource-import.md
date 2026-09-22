@@ -86,9 +86,10 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
    Then `update_instance` to `latest+dev` so the instance actually resolves what you published.
 8. **Editing an existing bundle affects every instance using it** — on Path B, prompt the user
    before changing bundle source.
-9. **NEVER read `~/.config/massdriver/config.yaml`** — it holds API keys for every configured
-   profile. The state backend needs an org slug and API key; take them from already-exported
-   environment variables, or ask the user to export them. Do not go looking.
+9. **NEVER read `~/.config/massdriver/config.yaml` directly** — it holds API keys for every
+   configured profile. The state backend needs an org slug and API key; take them from the
+   environment, or pipe `mass config get --show-secrets` (active profile only) straight into a
+   variable. Never echo either value.
 10. **NEVER** call `approve_deployment` — human authorization step, hook-blocked.
 
 ## Phase 1: Choose (or confirm) the Import Path
@@ -135,8 +136,12 @@ Set up **only what the chosen path needs**.
 **Paths A/B additionally:**
 - The state backend needs `TF_HTTP_USERNAME` (organization slug) and `TF_HTTP_PASSWORD` (API key
   / service account token). Use `$MASSDRIVER_ORGANIZATION_ID` and `$MASSDRIVER_API_KEY` if
-  they're exported; otherwise ask the user to export them for this session. Never read the config
-  file, never echo the values.
+  they're in the environment; under profile auth, pipe `mass config get --show-secrets` straight
+  into the variable. Never read the config file, never echo the values.
+- **Exports do not persist between Bash calls.** All `TF_HTTP_*` assignments and the `tofu`
+  commands must go in a single invocation — see Procedure Step 6. If credentials are missing
+  entirely, the user has to restart Claude Code with them exported; there is no way to add a
+  variable to a running session.
 - `tofu import` needs the provider to authenticate for real, locally — see Procedure Step 5 in
   the reference. Confirm the user has ambient cloud credentials for the target account before
   you get deep into bundle authoring.
