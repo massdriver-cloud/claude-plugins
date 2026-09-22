@@ -56,9 +56,8 @@ tool performs for you.
 ## Mental Model (must understand)
 
 Bundles are **reusable modules deployed as many instances**, so a bundle must NOT contain
-`import {}` blocks — those hardcode one cloud resource ID into source that every instance shares.
-Adopt state with the imperative `tofu import` command instead, pointed at one specific instance's
-Massdriver-managed state.
+`import {}` blocks — adopt state with the imperative `tofu import` instead, pointed at one
+specific instance's state. (Reasoning: "Why not `import {}` blocks" in the reference.)
 
 **Import requires that both the bundle AND an instance already exist** — state is per-instance, so
 there is nothing to import into until you've published the bundle and added the component
@@ -87,9 +86,8 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
 8. **Editing an existing bundle affects every instance using it** — on Path B, prompt the user
    before changing bundle source.
 9. **NEVER read `~/.config/massdriver/config.yaml` directly** — it holds API keys for every
-   configured profile. The state backend needs an org slug and API key; take them from the
-   environment, or pipe `mass config get --show-secrets` (active profile only) straight into a
-   variable. Never echo either value.
+   configured profile, and never echo a credential into the transcript. Procedure Step 2 has the
+   sanctioned ways to source the state backend's org slug and API key.
 10. **NEVER** call `approve_deployment` — human authorization step, hook-blocked.
 
 ## Phase 1: Choose (or confirm) the Import Path
@@ -134,17 +132,11 @@ Set up **only what the chosen path needs**.
    never double-prefix.
 
 **Paths A/B additionally:**
-- The state backend needs `TF_HTTP_USERNAME` (organization slug) and `TF_HTTP_PASSWORD` (API key
-  / service account token). Use `$MASSDRIVER_ORGANIZATION_ID` and `$MASSDRIVER_API_KEY` if
-  they're in the environment; under profile auth, pipe `mass config get --show-secrets` straight
-  into the variable. Never read the config file, never echo the values.
-- **Exports do not persist between Bash calls.** All `TF_HTTP_*` assignments and the `tofu`
-  commands must go in a single invocation — see Procedure Step 6. If credentials are missing
-  entirely, the user has to restart Claude Code with them exported; there is no way to add a
-  variable to a running session.
-- `tofu import` needs the provider to authenticate for real, locally — see Procedure Step 5 in
-  the reference. Confirm the user has ambient cloud credentials for the target account before
-  you get deep into bundle authoring.
+- The state backend needs an org slug and an API key — Procedure Step 2 in the reference covers
+  both auth modes. If neither resolves, the user must restart Claude Code with them exported.
+- `tofu import` needs the provider to authenticate for real, locally — see Procedure Step 5.
+  Confirm the user has ambient cloud credentials for the target account before you get deep into
+  bundle authoring.
 
 **Path C:** nothing further. No state backend, no cloud credentials — Massdriver won't deploy it.
 
@@ -166,11 +158,9 @@ Follow [references/import.md](../skills/massdriver/references/import.md) for the
 - **Path C** — read the resource type schema (and its `instructions`, if it ships any), build a
   conforming payload, `mass resource create`, optionally `set_environment_default`.
 
-For A and B, the State Import Procedure is: confirm Massdriver-managed state → export the
-`TF_HTTP_*` variables using the `stateUrl` from `get_instance`'s `statePaths` → drop a throwaway
-`backend_import.tf` → give the provider local config → `tofu init && tofu import` →
-`create_deployment` with `action: PLAN` → loop on publish/`update_instance`/re-plan until the
-plan shows no changes → delete the throwaway files.
+Paths A and B both converge on **The State Import Procedure** (Steps 0-8 in the reference).
+Follow it there step by step — do not work from memory; the credential and backend setup is
+order-dependent and every step has a failure mode.
 
 ## Phase 4: Report
 
@@ -189,9 +179,8 @@ plan shows no changes → delete the throwaway files.
 
 - If the `PLAN` output proposes destroying or replacing an imported resource, STOP — the HCL
   doesn't match reality. Reconcile the config, republish, re-plan. Never deploy on a dirty plan.
-- Wrong resource in state: `tofu state rm <address>`, then re-import.
-- State lock stuck after an interrupted run: `orphan_instance` clears state locks but resets the
-  instance to `INITIALIZED` — confirm with the user first.
+- Wrong resource in state, stuck state lock, provider auth failure: "Recovering from a bad
+  import" in the reference.
 - If stuck after more than 3 attempts, pause and ask.
 - On auth/credential/CLI errors, report the exact error and ask for help — do not search the
   filesystem or guess.
