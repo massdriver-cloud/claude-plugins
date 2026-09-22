@@ -251,6 +251,24 @@ check_bash() {
     done
     [ "$#" -ge 2 ] && [ "$1" = "mass" ] || continue
 
+    # Skip global flags so the subcommand lands back in $2. `mass --profile x
+    # bundle publish` must be read as `bundle publish`, not as `--profile x` —
+    # otherwise a documented, ordinary flag walks straight past every guard
+    # below. Consume known value-taking flags with their value first (so a
+    # profile NAMED like a subcommand can't be mistaken for one), then scan
+    # forward to the first real subcommand.
+    shift # past `mass`
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --profile=*|--help|-h) shift ;;
+        --profile) shift 2 ;;
+        bundle|instance|inst|package|pkg|environment|env|project) break ;;
+        *) shift ;;
+      esac
+    done
+    [ "$#" -ge 1 ] || continue
+    set -- mass "$@"
+
     case "$2" in
       bundle)
         if [ "${3:-}" = "publish" ]; then

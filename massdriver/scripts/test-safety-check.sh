@@ -104,6 +104,17 @@ check "read-only mass commands"                  pass  "$(bashcmd 'mass instance
 check "non-mass command untouched"               pass  "$(bashcmd 'tofu plan -out tf.plan')"
 check "compound cmd hides publish"               deny  "$(bashcmd 'echo hi && mass bundle publish')"
 check "env-var prefixed mass cmd"                deny  "$(bashcmd 'MASSDRIVER_PROFILE=x mass bundle publish')"
+
+### Global flags must not shift the subcommand out of view ###
+check "global --profile before publish"          deny  "$(bashcmd 'mass --profile staging bundle publish')"
+check "global --profile=v before publish"        deny  "$(bashcmd 'mass --profile=staging bundle publish')"
+check "global --profile before prod deploy"      deny  "$(bashcmd 'mass --profile staging instance deploy ecomm-prod-db -m msg')"
+check "global --profile before prod env update"  deny  "$(bashcmd 'mass --profile staging env update ecomm-prod -d x')"
+check "global --profile before prod proj delete" deny  "$(bashcmd 'mass --profile staging project delete prodsvc')"
+check "profile named like a subcommand"          deny  "$(bashcmd 'mass --profile bundle instance deploy ecomm-prod-db -m msg')"
+check "global --profile + --development ok"      pass  "$(bashcmd 'mass --profile staging bundle publish --development')"
+check "global --profile + test env deploy ok"    pass  "$(bashcmd 'mass --profile staging instance deploy ecomm-agentx7k2-db -m msg')"
+check "global --profile + --plan on prod ok"     pass  "$(bashcmd 'mass --profile staging instance deploy ecomm-prod-db --plan -m msg')"
 check "massive not mass"                         pass  "$(bashcmd 'massive-tool run mass-transit')"
 check "publish --help is read-only"              pass  "$(bashcmd 'mass bundle publish --help')"
 check "publish -h in compound cmd"               pass  "$(bashcmd 'grep -rl x . 2>/dev/null; echo ---; mass bundle publish -h 2>&1 | head -60')"
