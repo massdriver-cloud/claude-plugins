@@ -106,30 +106,36 @@ supplies its own state configuration.
 
 ### Step 5: Give the provider enough config to read the resource
 
-`tofu import` runs locally, so the provider must authenticate for real — and the credentials
-Massdriver uses are frequently ones you **cannot** reproduce on your machine. The common case is
-an AWS role whose trust policy admits only Massdriver's provisioning role: it is *supposed* to be
-unassumable locally. A failure here is usually the design working, not a bug to engineer around.
+`tofu import` runs locally, so the provider must authenticate for real — and the identity
+Massdriver provisions with is frequently one you **cannot** reproduce on your machine by design.
+Every cloud has some form of delegated identity scoped to the provisioner (assumed roles,
+service-account impersonation, workload identity federation), and the point of it is that it is
+not usable from a laptop. A failure here is usually that design working, not a bug to engineer
+around.
 
-Try the simple strategies in order and stop at the first that works:
+You do not need Massdriver's credential. You need **any** credential of the user's that can read
+the resource. Try in order, stop at the first that works:
 
-1. **Use the ambient credentials already in the shell** — `AWS_PROFILE`, `GOOGLE_APPLICATION_CREDENTIALS`,
-   an existing `az login`. If they can already read the resource, you need nothing else.
-2. **Point the provider at the local default credential chain.** Bundle provider blocks read from
-   a connection variable (e.g. `var.aws_authentication.arn`) that is empty on your machine.
-   Comment out that block and add a plain one alongside it. This is a **temporary local edit** —
-   see the warning below.
-3. **Assume the Massdriver role locally** — only if the user confirms it is assumable by them.
-   `get_environment` → defaults identifies the credential resource; `export_resource` returns its
-   payload including the role ARN. It returns **unmasked secrets**, so confirm before calling it
-   and never echo the result. Then `mass bundle build` and write a throwaway
+1. **Use what is already in the shell.** Most providers resolve an ambient credential with no
+   configuration — an environment variable, a CLI login, a key or service-account file the user
+   already has. If their default credential can read the resource, you need nothing else.
+2. **Initialize the provider from the user's local credential.** Bundle provider blocks read from
+   a connection variable the platform populates (`var.<platform>_authentication.*`), which is
+   empty on your machine. Comment that block out and add a plain one beside it that uses the
+   provider's default credential resolution — or the key, access key, or service-account file the
+   user points you at. This is a **temporary local edit**; see the warning below.
+3. **Reproduce Massdriver's identity locally** — only if the user confirms they hold it and can
+   use it from their machine. `get_environment` → defaults identifies the credential resource and
+   `export_resource` returns its payload. That payload contains **unmasked secrets**, so confirm
+   before calling it and never echo the result. Then `mass bundle build` and write a throwaway
    `import.auto.tfvars.json` in the step directory with `md_metadata`, the required params, and
    the `<platform>_authentication` object.
 
-**If none of those work, STOP and ask the user how they want to proceed.** Do not get creative:
-no probing for credential files, no enumerating profiles, no trying other roles, no inventing an
-authentication path. Report the exact provider error and offer to hand them the `tofu import`
-command to run with their own credentials.
+**If none of those work, STOP and ask the user how they want to proceed** — most usefully, ask
+which credential they normally use for this account, project or subscription. Do not get
+creative: no probing for credential files, no enumerating profiles, no trying other identities,
+no inventing an authentication path. Report the exact provider error and offer to hand them the
+`tofu import` command to run with their own credentials.
 
 > **Revert every provider edit before ANY `mass bundle publish`** — including the republish loop
 > in Step 7, not just the cleanup in Step 8. A provider block rewritten for local credentials
@@ -195,7 +201,7 @@ local import should survive. The instance now has real state and a clean plan; t
 - **Wrong resource imported**: `tofu state rm <resource.address>`, then re-import correctly.
 - **State lock stuck** (an interrupted run): `orphan_instance` can clear state locks, but it
   also resets the instance to `INITIALIZED`. Confirm with the user first.
-- **Import fails on provider auth**: expected when the Massdriver role is scoped to the
+- **Import fails on provider auth**: expected when Massdriver's identity is scoped to the
   provisioner. Work the Step 5 ladder, then stop and ask. Do not improvise a credential path.
 
 ---
@@ -245,10 +251,11 @@ no instance.
    `ResourceType`, one entry per workflow — CLI, cloud console, etc.). If the type has them,
    follow them over the generic steps here.
 2. **Discover the live values** with the cloud CLI (`aws … describe`, `gcloud … describe`,
-   `az … show`) and build a payload that validates against the schema. Write it to a file:
+   `az … show`) and build a payload that validates against the schema — the schema decides the
+   shape, not this example. Write it to a file:
    ```bash
    cat > /tmp/resource.json <<'JSON'
-   { "infrastructure": { "arn": "…" }, "aws": { "region": "us-west-2" } }
+   { "infrastructure": { "<id-field>": "…" }, "<cloud>": { "region": "…" } }
    JSON
    ```
 3. **Create the resource:**
