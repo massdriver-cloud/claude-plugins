@@ -82,18 +82,27 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
    while the plan is dirty**. Never deploy until the plan is clean.
 6. **ALWAYS** pass a `message` when calling `create_deployment`.
 7. **ALWAYS** publish after ANY code change — the platform cannot see your local filesystem.
-   Then `update_instance` to `latest+dev` so the instance actually resolves what you published.
-8. **Editing an existing bundle affects every instance using it** — on Path B, prompt the user
+   Then `update_instance` to the **exact dev release** that publish emitted, timestamp and all
+   (`1.2.3+dev-20260423T120000`), so the instance resolves what you published.
+8. **NEVER pin a release channel** (`latest+dev`, `~1+dev`) anywhere in this workflow. A channel
+   makes the platform run a full deploy — `tofu apply` — on every publish, against real
+   infrastructure that already exists and may be production. Exact pins never float, so nothing
+   deploys on its own. This is the one place import differs from normal bundle development,
+   where a channel is the right tool.
+9. **The only deployment action in this workflow is `create_deployment` with `action: PLAN`.**
+   Import never provisions. The `PROVISION` deploy is a separate, human-authorized decision
+   after the plan is clean.
+10. **Editing an existing bundle affects every instance using it** — on Path B, prompt the user
    before changing bundle source.
-9. **NEVER read `~/.config/massdriver/config.yaml` directly** — it holds API keys for every
+11. **NEVER read `~/.config/massdriver/config.yaml` directly** — it holds API keys for every
    configured profile, and never echo a credential into the transcript. Procedure Step 2 has the
    sanctioned ways to source the state backend's org slug and API key.
-10. **NEVER** call `approve_deployment` — human authorization step, hook-blocked.
-11. **Never improvise cloud credentials.** If `tofu import` can't authenticate, work the Step 5
+12. **NEVER** call `approve_deployment` — human authorization step, hook-blocked.
+13. **Never improvise cloud credentials.** If `tofu import` can't authenticate, work the Step 5
     ladder (ambient credential → initialize the provider from the user's local credential →
     reproduce Massdriver's identity, only if the user says they can), then STOP and ask. Do not
     probe for credential files, enumerate profiles, or try other identities.
-12. **Any local provider edit is temporary and must be reverted before EVERY
+14. **Any local provider edit is temporary and must be reverted before EVERY
     `mass bundle publish`** — not just at cleanup. A provider block rewritten for local
     credentials that reaches the platform breaks every instance of the bundle.
 
@@ -162,7 +171,7 @@ Follow [references/import.md](../skills/massdriver/references/import.md) for the
 - **Path A** — author the bundle (scope it to the resource *and* its immediate dependencies:
   security groups, parameter groups, subnet groups; ask when membership is ambiguous), ensure
   the OCI repo exists and is granted, publish `--development`, `add_component`,
-  `update_instance` to `latest+dev`, then run the State Import Procedure.
+  `update_instance` to the exact dev release, then run the State Import Procedure.
 - **Path B** — identify the bundle, confirm its backend, establish an **undeployed** target
   instance, then run the State Import Procedure. Prompt before editing bundle source.
 - **Path C** — read the resource type schema (and its `instructions`, if it ships any), build a

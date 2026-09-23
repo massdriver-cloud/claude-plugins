@@ -42,6 +42,21 @@ same resource. **Never add `import {}` blocks to a bundle.** Adopt state with th
 Both bundle paths converge here. **The bundle must be published AND an instance must exist
 first** — state is per-instance, so there is nothing to import into until then.
 
+### No release channels, no deploys
+
+Normal bundle development pins a floating channel (`latest+dev`, `~1+dev`) so an instance picks
+up each new publish. **Import must not.** A release channel makes the platform run a full deploy
+(`tofu apply`) on every publish — against infrastructure that already exists and may be
+production. An apply before the plan is clean can destroy or duplicate real resources.
+
+Pin **exact dev releases only**. `mass bundle publish --development` emits one per publish,
+timestamped: `1.2.3+dev-20260423T120000`. The timestamped form is a specific immutable release
+and is safe; the bare `+dev` suffix is the channel and is not. Re-pin explicitly after each
+publish — an exact pin never floats, so no publish can trigger anything on its own.
+
+The only deployment action in this whole procedure is `create_deployment` with `action: PLAN`.
+Nothing here provisions.
+
 ### Step 0: Safety gate — the hook does not cover this
 
 The plugin's safety hook inspects `mass` CLI commands and MCP tool calls. `tofu import` is
@@ -181,8 +196,9 @@ If the plan proposes changes, the HCL doesn't match the live resource. Per itera
 2. **Restore the real provider block** if Step 5 changed it, and confirm `backend_import.tf` and
    `import.auto.tfvars.json` are not staged for publish.
 3. `mass bundle publish --development` (the platform cannot see your filesystem).
-4. `update_instance` with version `latest+dev` so the instance resolves the release you just
-   published — otherwise the next plan runs the OLD version.
+4. `update_instance` with the **exact dev release** that publish just emitted (e.g.
+   `1.2.3+dev-20260423T120000`) so the next plan runs the code you just fixed. Never a channel
+   constraint — see *No release channels, no deploys*.
 5. `create_deployment` (`action: PLAN`) + `get_deployment_logs follow:true`.
 
 **If the plan proposes destroying or replacing an imported resource, STOP.** That means the
@@ -222,7 +238,8 @@ local import should survive. The instance now has real state and a clean plan; t
 3. **Publish** (CLI): `mass bundle publish --development`.
 4. **Add to the blueprint** (MCP): `add_component`. Every environment in the project now has an
    instance; the one you want is `<project>-<env>-<component>`.
-5. **Pin the development channel** (MCP): `update_instance` with version `latest+dev`.
+5. **Pin the exact dev release** (MCP): `update_instance` with the version `mass bundle publish`
+   emitted, timestamp and all. Never `latest+dev` — see *No release channels, no deploys*.
 6. Run **The State Import Procedure** against that (undeployed) instance.
 
 ## Path B: Existing Bundle
@@ -233,7 +250,8 @@ local import should survive. The instance now has real state and a clean plan; t
    project/environment or import into an existing **undeployed** instance. Importing into an
    already-provisioned instance would collide with state it already owns — don't, unless the
    user explicitly confirms that's what they want.
-3. **Pin the development channel** if you'll be republishing: `update_instance`, `latest+dev`.
+3. **Pin the exact dev release** if you'll be republishing: `update_instance` with the
+   timestamped version, never a channel constraint — see *No release channels, no deploys*.
 4. Run **The State Import Procedure**, prompting before any bundle edits.
 
 ## Path C: Register Resource Only
