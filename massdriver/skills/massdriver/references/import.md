@@ -25,6 +25,51 @@ cloud resource ID into bundle source, so every instance of that bundle would try
 same resource. **Never add `import {}` blocks to a bundle.** Adopt state with the imperative
 `tofu import` command, pointed at one specific instance's state.
 
+## Dependencies that belong to another bundle
+
+Real infrastructure has dependencies, and some of them are not part of the thing you are
+importing. A database sits in a network. If that network is not already in Massdriver — as a
+bundle's output or as an imported resource — the import is blocked, and both obvious ways out are
+wrong:
+
+- **Network values as bundle params.** One line, and the plan goes clean. But the network's
+  identity becomes deploy-time config instead of a modeled dependency: nothing on the canvas
+  shows the relationship, nothing stops the value drifting, and every new environment retypes it.
+- **The network inside the bundle.** Worse. The bundle claims a resource it did not create and
+  that other things depend on; destroying the instance would try to destroy the network.
+
+### Where the line is
+
+Two questions, cheapest first:
+
+1. **Does anything else already use it?** If yes it cannot go in this bundle — destroying the
+   bundle would break the others.
+2. **Should destroying this resource destroy it?** A parameter group, a subnet group, a security
+   group created for this database: yes, they die with it, they belong in the bundle. A network,
+   a DNS zone, a KMS key shared across services, a cluster: no. Those are connections.
+
+This generalizes past networks — a shared KMS key and an existing cluster have the same shape and
+are less obvious.
+
+### What to do
+
+**Stop and ask the user.** Never decide this silently. Name the dependency, say which bundle it
+would belong to, and offer the two real options:
+
+- **Halt** — author or import the dependency properly first, then come back.
+- **Register the dependency as an imported resource** (Path C) and continue. It fills the
+  bundle's connection slot and unblocks the main import; a second import can bring the dependency
+  under management later.
+
+If they continue, the imported resource must exist and be wired **before Step 5** — that step
+builds `import.auto.tfvars.json` from the instance's params *and* its connections, so an unfilled
+slot surfaces at Step 6 as a provider error that looks unrelated. Wire it with
+`set_remote_reference` (one instance's slot; `resource_id` is the imported resource's UUID) or
+`set_environment_default` (every instance in the environment).
+
+**Path B presents differently.** The bundle already declares the connection, so the symptom is an
+empty slot with nothing to fill it rather than a scoping decision. Same resolution.
+
 ## Tooling for this workflow
 
 - **MCP** — everything on the control plane: `get_viewer`, `get_project`, `get_environment`,
@@ -44,7 +89,7 @@ first** — state is per-instance, so there is nothing to import into until then
 
 ### No release channels, no deploys
 
-Normal bundle development pins a floating channel (`latest+dev`, `~1+dev`) so an instance picks
+Normal bundle development pins a release channel (`latest+dev`, `~1+dev`) so an instance picks
 up each new publish. **Import must not.** A release channel makes the platform run a full deploy
 (`tofu apply`) on every publish — against infrastructure that already exists and may be
 production. An apply before the plan is clean can destroy or duplicate real resources.
@@ -212,11 +257,24 @@ block if Step 5 changed it. Diff the bundle against what you started with — no
 local import should survive. The instance now has real state and a clean plan; the actual
 `PROVISION` deploy is a separate, human-authorized decision.
 
+**Then check what this import made obsolete.** `list_resources` with `origin: IMPORTED`, scoped
+to the environment. If one of them represents the infrastructure you just brought into a bundle,
+it is now redundant — there is no reason to keep an imported resource once a provisioned one
+exists for the same thing.
+
+**Report it, do not act on it.** The replacement cannot happen yet: the bundle's resource does
+not exist until the user completes the import with a full deploy, which is theirs to run. And
+re-pointing consumers is not part of this flow — `set_remote_reference` refuses an instance in
+`PROVISIONED` status, so anything already deployed against the imported resource needs separate,
+deliberate work. Name the superseded resource and what retiring it would involve.
+
 ### Recovering from a bad import
 
 - **Wrong resource imported**: `tofu state rm <resource.address>`, then re-import correctly.
 - **State lock stuck** (an interrupted run): `orphan_instance` can clear state locks, but it
   also resets the instance to `INITIALIZED`. Confirm with the user first.
+- **Provider errors about a missing network, cluster or other upstream**: usually an unfilled
+  connection slot, not a credential problem. See *Dependencies that belong to another bundle*.
 - **Import fails on provider auth**: expected when Massdriver's identity is scoped to the
   provisioner. Work the Step 5 ladder, then stop and ask. Do not improvise a credential path.
 
@@ -227,10 +285,12 @@ local import should survive. The instance now has real state and a clean plan; t
 1. **Author the bundle** using the normal bundle-development guidance in
    [SKILL.md](../SKILL.md) — fetch the platform resource type first
    (`mass resource-type get <platform>`), write `massdriver.yaml` and `src/`.
-   - **Scope the bundle to the resource plus its immediate dependencies.** Importing a database
+   - **Scope the bundle to the resource plus the dependencies it owns.** Importing a database
      means also covering its security group, parameter group, and subnet group — not just the
      DB. Match the HCL to what actually exists, or the plan will never come clean.
-   - When it's ambiguous whether a neighbouring resource belongs in this bundle, ask the user.
+   - **That list has a boundary**: the subnet group belongs in the bundle, the network it points
+     at does not. See *Dependencies that belong to another bundle* — getting this wrong is not a
+     style question, it hands the bundle the power to destroy shared infrastructure.
 2. **Ensure the OCI repository exists and is granted** — `get_oci_repo` with the bundle name;
    if absent, `create_oci_repo` (`artifact_type: BUNDLE`), then check `list_oci_repo_grants`
    covers the target project and `create_oci_repo_grant` if not. Without the grant,
@@ -251,7 +311,7 @@ local import should survive. The instance now has real state and a clean plan; t
    already-provisioned instance would collide with state it already owns — don't, unless the
    user explicitly confirms that's what they want.
 3. **Pin the exact dev release** if you'll be republishing: `update_instance` with the
-   timestamped version, never a channel constraint — see *No release channels, no deploys*.
+   timestamped version, never a release channel — see *No release channels, no deploys*.
 4. Run **The State Import Procedure**, prompting before any bundle edits.
 
 ## Path C: Register Resource Only

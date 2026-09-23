@@ -92,17 +92,22 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
 9. **The only deployment action in this workflow is `create_deployment` with `action: PLAN`.**
    Import never provisions. The `PROVISION` deploy is a separate, human-authorized decision
    after the plan is clean.
-10. **Editing an existing bundle affects every instance using it** — on Path B, prompt the user
+10. **A dependency that belongs to another bundle is a STOP.** If the resource depends on
+    infrastructure that isn't in Massdriver yet (a network, a cluster, a shared key), never
+    smuggle it in as bundle params or absorb it into the bundle. Ask the user: halt and model it
+    properly first, or register it as an imported resource (Path C) to unblock this import. See
+    "Dependencies that belong to another bundle" in the reference.
+11. **Editing an existing bundle affects every instance using it** — on Path B, prompt the user
    before changing bundle source.
-11. **NEVER read `~/.config/massdriver/config.yaml` directly** — it holds API keys for every
+12. **NEVER read `~/.config/massdriver/config.yaml` directly** — it holds API keys for every
    configured profile, and never echo a credential into the transcript. Procedure Step 2 has the
    sanctioned ways to source the state backend's org slug and API key.
-12. **NEVER** call `approve_deployment` — human authorization step, hook-blocked.
-13. **Never improvise cloud credentials.** If `tofu import` can't authenticate, work the Step 5
+13. **NEVER** call `approve_deployment` — human authorization step, hook-blocked.
+14. **Never improvise cloud credentials.** If `tofu import` can't authenticate, work the Step 5
     ladder (ambient credential → initialize the provider from the user's local credential →
     reproduce Massdriver's identity, only if the user says they can), then STOP and ask. Do not
     probe for credential files, enumerate profiles, or try other identities.
-14. **Any local provider edit is temporary and must be reverted before EVERY
+15. **Any local provider edit is temporary and must be reverted before EVERY
     `mass bundle publish`** — not just at cleanup. A provider block rewritten for local
     credentials that reaches the platform breaks every instance of the bundle.
 
@@ -187,6 +192,8 @@ order-dependent and every step has a failure mode.
 - What now exists: bundle path, component id, instance slug, or resource ID.
 - Import status: which resources landed in state (`tofu state list`), and that the `PLAN`
   deployment came back clean.
+- Any imported resource this import made obsolete (`list_resources`, `origin: IMPORTED`) — say
+  it is superseded and that retiring it needs the full deploy first. Report only; don't act.
 - What's left for a human: deploying the instance, importing into other environments, publishing
   stable. Note that production deploys and stable publishes are human-authorized and
   hook-blocked — don't attempt them.
