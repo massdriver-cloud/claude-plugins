@@ -97,8 +97,11 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
     smuggle it in as bundle params or absorb it into the bundle. Ask the user: halt and model it
     properly first, or register it as an imported resource (Path C) to unblock this import. See
     "Dependencies that belong to another bundle" in the reference.
-11. **Editing an existing bundle affects every instance using it** — on Path B, prompt the user
-   before changing bundle source.
+11. **Editing an existing bundle affects every instance using it.** On Path B the goal is to use
+    the bundle as-is. If the live resource's configuration genuinely can't be expressed through
+    params, stop and ask before changing bundle source, and keep the change backward compatible:
+    new params and connections optional with behavior-preserving defaults, no renames, removals,
+    narrowed types, or altered artifact outputs.
 12. **NEVER read `~/.config/massdriver/config.yaml` directly** — it holds API keys for every
    configured profile, and never echo a credential into the transcript. Procedure Step 2 has the
    sanctioned ways to source the state backend's org slug and API key.

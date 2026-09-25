@@ -44,9 +44,10 @@ Two questions, cheapest first:
 
 1. **Does anything else already use it?** If yes it cannot go in this bundle — destroying the
    bundle would break the others.
-2. **Should destroying this resource destroy it?** A parameter group, a subnet group, a security
-   group created for this database: yes, they die with it, they belong in the bundle. A network,
-   a DNS zone, a KMS key shared across services, a cluster: no. Those are connections.
+2. **Should destroying this resource destroy it?** A parameter group, a subnet (if the database
+   requires a dedicated subnet), a security group created for this database: yes, they die with
+   it, they belong in the bundle. A network, a DNS zone, a KMS key shared across services, a 
+   cluster: no. Those are connections.
 
 This generalizes past networks — a shared KMS key and an existing cluster have the same shape and
 are less obvious.
@@ -173,7 +174,7 @@ service-account impersonation, workload identity federation), and the point of i
 not usable from a laptop. A failure here is usually that design working, not a bug to engineer
 around.
 
-You do not need Massdriver's credential. You need **any** credential of the user's that can read
+You may not need Massdriver's credential. You need **any** credential of the user's that can read
 the resource. Try in order, stop at the first that works:
 
 1. **Use what is already in the shell.** Most providers resolve an ambient credential with no
@@ -286,11 +287,11 @@ deliberate work. Name the superseded resource and what retiring it would involve
    [SKILL.md](../SKILL.md) — fetch the platform resource type first
    (`mass resource-type get <platform>`), write `massdriver.yaml` and `src/`.
    - **Scope the bundle to the resource plus the dependencies it owns.** Importing a database
-     means also covering its security group, parameter group, and subnet group — not just the
-     DB. Match the HCL to what actually exists, or the plan will never come clean.
-   - **That list has a boundary**: the subnet group belongs in the bundle, the network it points
-     at does not. See *Dependencies that belong to another bundle* — getting this wrong is not a
-     style question, it hands the bundle the power to destroy shared infrastructure.
+     means also covering its security group, parameter group, and possibly subnet group — not 
+     just the DB. Match the HCL to what actually exists, or the plan will never come clean.
+   - **That list has a boundary**: the subnet group may belong in the bundle, the network it 
+     points at does not. See *Dependencies that belong to another bundle* — getting this wrong
+     is not a style question, it hands the bundle the power to destroy shared infrastructure.
 2. **Ensure the OCI repository exists and is granted** — `get_oci_repo` with the bundle name;
    if absent, `create_oci_repo` (`artifact_type: BUNDLE`), then check `list_oci_repo_grants`
    covers the target project and `create_oci_repo_grant` if not. Without the grant,
@@ -303,6 +304,25 @@ deliberate work. Name the superseded resource and what retiring it would involve
 6. Run **The State Import Procedure** against that (undeployed) instance.
 
 ## Path B: Existing Bundle
+
+**Use the bundle as-is.** It is already published and other instances may already run it. The
+goal is to fit the import to the bundle, not the bundle to one resource — reach for a bundle edit
+only after the params can't express what the live resource actually looks like.
+
+Sometimes they can't, and the plan will never come clean without a change. When that happens,
+**stop and ask the user before touching bundle source**, and keep whatever you change backward
+compatible with every existing instance:
+
+- New params must be **optional, with defaults that preserve today's behavior**. A new required
+  param breaks every instance whose saved params predate it.
+- New connections must be optional too — a new required slot leaves existing instances unfilled.
+- Don't rename or remove params, narrow a type, or add constraints that existing saved values
+  would now fail.
+- Don't change artifact outputs; downstream instances are connected to those fields.
+
+Your `--development` publishes don't reach instances pinned to stable, so iterating is safe. The
+compatibility bill comes due when someone publishes stable — a human decision, not yours. Say
+plainly in the handoff that the bundle changed and what it would mean for existing instances.
 
 1. **Identify the bundle** and pull its source if you don't have it: `mass bundle pull <name>`.
    Confirm the backend (Procedure Step 1).
