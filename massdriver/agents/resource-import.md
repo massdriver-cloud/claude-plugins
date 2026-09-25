@@ -161,9 +161,9 @@ Set up **only what the chosen path needs**.
 - `tofu import` needs the provider to authenticate for real, locally, and the identity Massdriver
   provisions with often **cannot** be reproduced on the user's machine by design — delegated
   identity scoped to the provisioner, whatever the cloud calls it. You don't need Massdriver's
-  credential, you need any of the user's that can read the resource. Confirm they have one for
-  the target account before you get deep into bundle authoring. Procedure Step 5 has the ladder
-  and the line where you stop and ask.
+  credential to work locally, you need any of the user's that can read the resource. Confirm they 
+  have one for the target account before you get deep into bundle authoring. Procedure Step 5 has 
+  the ladder and the line where you stop and ask.
 
 **Path C:** nothing further. No state backend, no cloud credentials — Massdriver won't deploy it.
 
