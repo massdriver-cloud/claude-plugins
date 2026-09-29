@@ -81,7 +81,7 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
    `PLAN` is a dry run (exempt from the hook's production block). The danger is a **PROVISION
    while the plan is dirty**, or with params other than the ones that planned clean. A PLAN
    never saves its params — the instance form keeps the bundle defaults until a deployment
-   saves config. Never deploy until the plan is clean.
+   saves config. Never run a `PROVISION` deploy, that is for the user.
 6. **ALWAYS** pass a `message` when calling `create_deployment`.
 7. **ALWAYS** publish after ANY code change — the platform cannot see your local filesystem.
    Then `update_instance` to the **exact dev release** that publish emitted, timestamp and all
