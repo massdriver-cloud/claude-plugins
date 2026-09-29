@@ -100,8 +100,8 @@ timestamped: `1.2.3+dev-20260423T120000`. The timestamped form is a specific imm
 and is safe; the bare `+dev` suffix is the channel and is not. Re-pin explicitly after each
 publish — an exact pin never floats, so no publish can trigger anything on its own.
 
-The only deployment action in this whole procedure is `create_deployment` with `action: PLAN`.
-Nothing here provisions.
+The deployment actions in this procedure are `create_deployment` with `action: PLAN`, and one
+`propose_deployment` at the end (Step 8) that a human approves. Nothing here provisions.
 
 ### Step 0: Safety gate — the hook does not cover this
 
@@ -129,9 +129,13 @@ service account token** (`TF_HTTP_PASSWORD`). Two sources:
 - **API-key auth** — `$MASSDRIVER_ORGANIZATION_ID` and `$MASSDRIVER_API_KEY` are in the
   environment. Test with `[ -n "${MASSDRIVER_API_KEY:-}" ]`; never print them. `get_viewer`
   confirms the org the MCP server is authenticated to.
-- **Profile auth** — neither is set. Pipe `mass config get -o json --show-secrets | jq -r .apiKey`
-  straight into the variable inside the Step 6 block. Never run it standalone — the key would
-  land in the transcript. May need a `mass config get:*` allowlist rule.
+- **Profile auth** — neither is set. The slug is the organization `get_viewer` returns. Pipe
+  `mass config get -o json --show-secrets | jq -r .api_key` straight into the variable inside
+  the Step 6 block. Never run it standalone — the key would
+  land in the transcript. The plugin's safety hook always asks the user to approve this
+  command, even in auto mode, so tell them what the prompt is for before you run it. Keep it
+  inline in the Bash command, never inside a script file — the hook only sees the command text.
+  If the user declines, fall back to the restart below.
 
 **NEVER read `~/.config/massdriver/config.yaml` directly** — it holds keys for every profile.
 
@@ -211,8 +215,8 @@ command needs the same preamble repeated:
 ```bash
 cd bundles/<bundle>/src
 
-export TF_HTTP_USERNAME="$MASSDRIVER_ORGANIZATION_ID"  # profile auth: $(mass config get -o json | jq -r .organizationId)
-export TF_HTTP_PASSWORD="$MASSDRIVER_API_KEY"          # profile auth: $(mass config get -o json --show-secrets | jq -r .apiKey)
+export TF_HTTP_USERNAME="$MASSDRIVER_ORGANIZATION_ID"  # profile auth: the get_viewer org slug
+export TF_HTTP_PASSWORD="$MASSDRIVER_API_KEY"          # profile auth: $(mass config get -o json --show-secrets | jq -r .api_key)
 export TF_HTTP_ADDRESS="<stateUrl from Step 3>"
 export TF_HTTP_LOCK_ADDRESS="$TF_HTTP_ADDRESS"
 export TF_HTTP_UNLOCK_ADDRESS="$TF_HTTP_ADDRESS"
@@ -224,9 +228,13 @@ tofu state list                                      # verify what landed in sta
 
 Then verify the config matches reality by planning **in Massdriver's provisioner**:
 
-- Call `create_deployment` with `action: PLAN`, the instance's params, and a message. On a
-  never-deployed instance this is the only option — `plan_deployment` replays an *existing*
-  deployment's params and there isn't one yet.
+- Call `create_deployment` with `action: PLAN`, the **import params**, and a message. The
+  import params are the full param set that reproduces the live resource, built from what you
+  read from the cloud. On a never-deployed instance this is the only option —
+  `plan_deployment` replays an *existing* deployment's params and there isn't one yet.
+- **A PLAN does not save its params.** Only a deployment saves an instance's config, so the
+  instance's form still holds the bundle defaults. A Deploy from the form would apply those
+  defaults, not the import params — and on an imported resource that can mean replace.
 - Read the result with `get_deployment_logs` (`follow: true`).
 - The goal is a plan with **no changes**.
 
@@ -256,7 +264,18 @@ while the plan is dirty.
 Delete `backend_import.tf` and `import.auto.tfvars.json`, and restore the original provider
 block if Step 5 changed it. Diff the bundle against what you started with — nothing from the
 local import should survive. The instance now has real state and a clean plan; the actual
-`PROVISION` deploy is a separate, human-authorized decision.
+`PROVISION` deploy is a separate, human-authorized decision — hand it off as a proposal.
+
+**Propose the deployment with the import params.** `propose_deployment` with `action:
+PROVISION`, the exact params from the last clean PLAN, and a message. The proposal is what
+carries the import params to the platform; nothing else does. Then `plan_deployment` on the
+proposal's id and confirm it is the same clean plan. Tell the user to review that plan and
+approve or reject the proposal in the UI — and **not to Deploy from the instance form**, which
+still holds the defaults until the proposal is approved. Never approve it yourself.
+
+If the hook blocks the proposal (production environments), don't work around it. Give the user
+the import params and a `get_url` deep link, say that a form Deploy with the defaults would
+act on the imported resource, and stop.
 
 **Then check what this import made obsolete.** `list_resources` with `origin: IMPORTED`, scoped
 to the environment. If one of them represents the infrastructure you just brought into a bundle,
@@ -264,7 +283,7 @@ it is now redundant — there is no reason to keep an imported resource once a p
 exists for the same thing.
 
 **Report it, do not act on it.** The replacement cannot happen yet: the bundle's resource does
-not exist until the user completes the import with a full deploy, which is theirs to run. And
+not exist until the user approves the proposed deployment. And
 re-pointing consumers is not part of this flow — `set_remote_reference` refuses an instance in
 `PROVISIONED` status, so anything already deployed against the imported resource needs separate,
 deliberate work. Name the superseded resource and what retiring it would involve.

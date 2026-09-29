@@ -34,7 +34,8 @@ instance's Massdriver-managed HTTP state backend — **never `import {}` blocks*
 hardcode one cloud resource ID into source shared by every instance. The import runs locally; the
 plan runs in Massdriver's provisioner (MCP `create_deployment` with `action: PLAN`, read via
 `get_deployment_logs`), never `tofu plan` locally. The agent loops import → publish →
-`update_instance` → re-plan until the plan shows no changes, before anything is deployed.
+`update_instance` → re-plan until the plan shows no changes, then proposes a `PROVISION`
+deployment with those exact params for a human to approve. Nothing deploys without that approval.
 
 > Unrelated to `mass bundle import`, which scans a bundle's IaC for variables not yet exposed as
 > Massdriver params.
@@ -79,5 +80,5 @@ blast radius.
    - Verify MCP auth (`get_viewer`) and the CLI profile (`mass whoami`), then set up only the
      credentials that path needs — Paths A/B need an organization slug + API key exported for the
      state backend plus local cloud credentials for the provider; Path C needs neither.
-   - Run the workflow and report what was imported, whether the plan is clean, and what is left
-     for a human to authorize.
+   - Run the workflow and report what was imported, whether the plan is clean, and the proposed
+     deployment left for a human to approve.

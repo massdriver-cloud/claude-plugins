@@ -7,6 +7,9 @@
 #   "allow"  -> auto-approve (skips the permission prompt). Only used for
 #               read-only MCP tools.
 #   "deny"   -> block the call with a one-line reason.
+#   "ask"    -> force the user prompt, even in auto mode. Used for
+#               `mass config get --show-secrets`, which the auto-mode
+#               classifier would otherwise deny outright.
 #   (silent) -> no opinion; the normal permission flow (user prompt /
 #               settings allowlist) decides.
 #
@@ -149,6 +152,11 @@ emit() { # decision, reason
 
 deny() { emit deny "$1"; }
 allow() { emit allow "$1"; }
+ask() { emit ask "$1"; }
+
+# `mass config get ... --show-secrets` within one simple command. Matched on
+# raw text, not tokens, so it is still found inside `VAR="$(mass ...)"`.
+SHOW_SECRETS_RE='(^|[[:space:]("`=])mass[[:space:]]([^;&|]*[[:space:]])?config[[:space:]]+get[[:space:]]([^;&|]*[[:space:]])?--show-secrets([[:space:]=)"`]|$)'
 
 check_mcp() {
   local tool="$1" slug env action
@@ -234,16 +242,12 @@ check_mcp() {
   exit 0
 }
 
-check_bash() {
-  local cmd seg action slug tok
-  cmd="$(json_get command)"
-  case " $cmd" in
-    *[\ \;\&\|\(]mass\ *) : ;; # contains a mass invocation
-    *) exit 0 ;;
-  esac
+# Prints a deny decision for the first guarded segment of $1, or nothing.
+scan_segments() {
+  local seg action slug tok
 
   # Split compound commands into simple segments, one per line.
-  printf '%s\n' "$cmd" | awk '{ gsub(/&&|\|\||;|\|/, "\n"); print }' | while IFS= read -r seg; do
+  printf '%s\n' "$1" | awk '{ gsub(/&&|\|\||;|\|/, "\n"); print }' | while IFS= read -r seg; do
     # shellcheck disable=SC2086
     set -- $seg
     while [ "$#" -gt 0 ] && case "$1" in -*) false ;; *=*) true ;; *) false ;; esac; do
@@ -323,6 +327,28 @@ check_bash() {
         fi ;;
     esac
   done
+}
+
+check_bash() {
+  local cmd verdict
+  cmd="$(json_get command)"
+  case " $cmd" in
+    *[\ \;\&\|\(]mass\ *) : ;; # contains a mass invocation
+    *) exit 0 ;;
+  esac
+
+  # Denials win over the ask below.
+  verdict="$(scan_segments "$cmd")"
+  if [ -n "$verdict" ]; then
+    printf '%s\n' "$verdict"
+    exit 0
+  fi
+
+  # Profile auth has no other way to hand the API key to the state backend.
+  # The user decides; the key is never printed when piped into a variable.
+  if [[ $cmd =~ $SHOW_SECRETS_RE ]]; then
+    ask "Reads the Massdriver API key from your active mass CLI profile so OpenTofu can authenticate to the Massdriver state backend. Approve only if the key is piped into a variable, not printed."
+  fi
   exit 0
 }
 

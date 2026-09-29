@@ -4,6 +4,7 @@
 # Each case feeds a PreToolUse payload to the guard and asserts the decision:
 #   deny  -> stdout contains "permissionDecision":"deny"
 #   allow -> stdout contains "permissionDecision":"allow"
+#   ask   -> stdout contains "permissionDecision":"ask"
 #   pass  -> stdout is empty (no opinion; normal permission flow decides)
 #
 # Run: ./test-safety-check.sh
@@ -31,6 +32,7 @@ check() { # name, expected(deny|allow|pass), payload
   case "$out" in
     *'"permissionDecision":"deny"'*) decision=deny ;;
     *'"permissionDecision":"allow"'*) decision=allow ;;
+    *'"permissionDecision":"ask"'*) decision=ask ;;
     "") decision=pass ;;
     *) decision="malformed($out)" ;;
   esac
@@ -118,6 +120,14 @@ check "global --profile + --plan on prod ok"     pass  "$(bashcmd 'mass --profil
 check "massive not mass"                         pass  "$(bashcmd 'massive-tool run mass-transit')"
 check "publish --help is read-only"              pass  "$(bashcmd 'mass bundle publish --help')"
 check "publish -h in compound cmd"               pass  "$(bashcmd 'grep -rl x . 2>/dev/null; echo ---; mass bundle publish -h 2>&1 | head -60')"
+
+### Bash: reading the profile API key forces the prompt ###
+check "show-secrets piped into a var"            ask   "$(bashcmd 'TF_HTTP_PASSWORD=\"$(mass config get -o json --show-secrets | jq -r .api_key)\" tofu import a b')"
+check "show-secrets with global --profile"       ask   "$(bashcmd 'X=$(mass --profile self-hosted config get -o json --show-secrets | jq -r .api_key)')"
+check "show-secrets standalone"                  ask   "$(bashcmd 'mass config get --show-secrets')"
+check "config get without secrets"               pass  "$(bashcmd 'X=\"$(mass config get -o json | jq -r .organization_id)\"')"
+check "show-secrets on another command"          pass  "$(bashcmd 'mass config get -o json; other --show-secrets')"
+check "deny beats ask"                           deny  "$(bashcmd 'K=$(mass config get --show-secrets) && mass bundle publish')"
 
 ### Custom production_pattern from .claude/massdriver.local.md ###
 mkdir -p "$WORKDIR/.claude"

@@ -79,7 +79,9 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
    that looks like production.
 5. **Neither import nor a PLAN mutates cloud infrastructure** — import only writes state, and
    `PLAN` is a dry run (exempt from the hook's production block). The danger is a **PROVISION
-   while the plan is dirty**. Never deploy until the plan is clean.
+   while the plan is dirty**, or with params other than the ones that planned clean. A PLAN
+   never saves its params — the instance form keeps the bundle defaults until a deployment
+   saves config. Never deploy until the plan is clean.
 6. **ALWAYS** pass a `message` when calling `create_deployment`.
 7. **ALWAYS** publish after ANY code change — the platform cannot see your local filesystem.
    Then `update_instance` to the **exact dev release** that publish emitted, timestamp and all
@@ -89,9 +91,10 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
    infrastructure that already exists and may be production. Exact pins never float, so nothing
    deploys on its own. This is the one place import differs from normal bundle development,
    where a channel is the right tool.
-9. **The only deployment action in this workflow is `create_deployment` with `action: PLAN`.**
-   Import never provisions. The `PROVISION` deploy is a separate, human-authorized decision
-   after the plan is clean.
+9. **The deployment actions in this workflow are `create_deployment` with `action: PLAN`, and
+   one final `propose_deployment` (`PROVISION`) with the exact params that planned clean.**
+   Import never provisions. A human approves the proposal; never tell them to Deploy from the
+   instance form. Procedure Step 8 has the hand-off.
 10. **A dependency that belongs to another bundle is a STOP.** If the resource depends on
     infrastructure that isn't in Massdriver yet (a network, a cluster, a shared key), never
     smuggle it in as bundle params or absorb it into the bundle. Ask the user: halt and model it
@@ -197,8 +200,10 @@ order-dependent and every step has a failure mode.
   deployment came back clean.
 - Any imported resource this import made obsolete (`list_resources`, `origin: IMPORTED`) — say
   it is superseded and that retiring it needs the full deploy first. Report only; don't act.
-- What's left for a human: deploying the instance, importing into other environments, publishing
-  stable. Note that production deploys and stable publishes are human-authorized and
+- The proposed deployment's id, and that its plan (`plan_deployment`) matches the clean PLAN.
+  If the hook blocked the proposal, say so and give the import params instead.
+- What's left for a human: reviewing and approving the proposal (not a Deploy from the instance
+  form, which still holds defaults), importing into other environments, publishing stable. Note that production deploys and stable publishes are human-authorized and
   hook-blocked — don't attempt them.
 - A UI deep link via `get_url` so they can inspect the result.
 
