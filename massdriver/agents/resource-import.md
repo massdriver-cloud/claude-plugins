@@ -84,8 +84,8 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
    saves config. Never run a `PROVISION` deploy, that is for the user.
 6. **ALWAYS** pass a `message` when calling `create_deployment`.
 7. **ALWAYS** publish after ANY code change — the platform cannot see your local filesystem.
-   Then `update_instance` to the **exact dev release** that publish emitted, timestamp and all
-   (`1.2.3+dev-20260423T120000`), so the instance resolves what you published.
+   Then `update_instance` to the **exact dev release** that publish emitted
+   (`0.0.1-dev.20260929T000749Z`), so the instance resolves what you published.
 8. **NEVER pin a release channel** (`latest+dev`, `~1+dev`) anywhere in this workflow. A channel
    makes the platform run a full deploy — `tofu apply` — on every publish, against real
    infrastructure that already exists and may be production. Exact pins never float, so nothing
@@ -113,9 +113,14 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
     ladder (ambient credential → initialize the provider from the user's local credential →
     reproduce Massdriver's identity, only if the user says they can), then STOP and ask. Do not
     probe for credential files, enumerate profiles, or try other identities.
-15. **Any local provider edit is temporary and must be reverted before EVERY
-    `mass bundle publish`** — not just at cleanup. A provider block rewritten for local
-    credentials that reaches the platform breaks every instance of the bundle.
+15. **Local import edits never reach the platform.** Restore the provider block and delete the
+    backend and tfvars files as soon as `tofu state list` confirms the import (Procedure Step 6),
+    before any `mass bundle publish`. A local provider config that reaches the platform breaks every
+    instance of the bundle.
+16. **Write-only values are the user's call.** Fill every param the cloud returns yourself. For
+    a value the cloud never returns (admin passwords, some keys), ask the user whether to hand it
+    to you or set it as an instance secret — "Values the cloud can't return" in the reference.
+    Never set a secret's value yourself, never quote Checkov output, and never invent a value.
 
 ## Phase 1: Choose (or confirm) the Import Path
 
@@ -156,11 +161,14 @@ Set up **only what the chosen path needs**.
    proceed.
 4. Establish the target project and environment (`get_project` / `get_environment`, or
    `create_project` / `create_environment`). Instance slugs are `<project>-<env>-<component>` —
-   never double-prefix.
+   never double-prefix. Before creating either, `list_custom_attributes`: the organization may
+   require attributes on projects and environments. Ask the user for the values; don't pick them.
 
 **Paths A/B additionally:**
 - The state backend needs an org slug and an API key — Procedure Step 2 in the reference covers
-  both auth modes. If neither resolves, the user must restart Claude Code with them exported.
+  both auth modes. With profile auth, tell the user now that the import step will ask them to
+  approve reading the key from their profile. If they won't approve it, they must restart Claude
+  Code with both variables exported — find out before you create or publish anything.
 - `tofu import` needs the provider to authenticate for real, locally, and the identity Massdriver
   provisions with often **cannot** be reproduced on the user's machine by design — delegated
   identity scoped to the provisioner, whatever the cloud calls it. You don't need Massdriver's
@@ -179,8 +187,8 @@ Do not probe environment variables, read credential files, or retry a failing co
 
 Follow [references/import.md](../skills/massdriver/references/import.md) for the path:
 
-- **Path A** — author the bundle (scope it to the resource *and* its immediate dependencies:
-  security groups, parameter groups, subnet groups; ask when membership is ambiguous), ensure
+- **Path A** — author the bundle (scope it to the resource *and* what exists only for it; ask
+  when membership is ambiguous; name fields for names the cloud won't change), ensure
   the OCI repo exists and is granted, publish `--development`, `add_component`,
   `update_instance` to the exact dev release, then run the State Import Procedure.
 - **Path B** — identify the bundle, confirm its backend, establish an **undeployed** target
@@ -197,14 +205,16 @@ order-dependent and every step has a failure mode.
 - Which path was taken and why.
 - What now exists: bundle path, component id, instance slug, or resource ID.
 - Import status: which resources landed in state (`tofu state list`), and that the `PLAN`
-  deployment came back clean.
+  deployment came back clean — naming each in-place update it still shows, and why.
+- Checkov failures from the plan, and any secret the plan logs exposed (rotate after deploy).
 - Any imported resource this import made obsolete (`list_resources`, `origin: IMPORTED`) — say
   it is superseded and that retiring it needs the full deploy first. Report only; don't act.
 - The proposed deployment's id, and that its plan (`plan_deployment`) matches the clean PLAN.
   If the hook blocked the proposal, say so and give the import params instead.
 - What's left for a human: reviewing and approving the proposal (not a Deploy from the instance
-  form, which still holds defaults), importing into other environments, publishing stable. Note that production deploys and stable publishes are human-authorized and
-  hook-blocked — don't attempt them.
+  form, which still holds defaults), importing into other environments, publishing stable.
+  Production deploys and stable publishes are human-authorized and hook-blocked — don't attempt
+  them.
 - A UI deep link via `get_url` so they can inspect the result.
 
 ## Error Handling

@@ -44,10 +44,12 @@ Two questions, cheapest first:
 
 1. **Does anything else already use it?** If yes it cannot go in this bundle — destroying the
    bundle would break the others.
-2. **Should destroying this resource destroy it?** A parameter group, a subnet (if the database
-   requires a dedicated subnet), a security group created for this database: yes, they die with
-   it, they belong in the bundle. A network, a DNS zone, a KMS key shared across services, a 
-   cluster: no. Those are connections.
+2. **Do the resources share a lifecycle?** Cloud resources that share a lifecycle with the
+   resource being imported should be included: if destroying the imported resource should also
+   destroy them, they belong in the bundle. In the database example, configuration or parameter
+   groups, a dedicated subnet, firewall rules or a security group created for this database, a
+   resource group or project that holds nothing else: yes, they die with it. A network, a DNS
+   zone, a key shared across services, a cluster: no. Those are connections.
 
 This generalizes past networks — a shared KMS key and an existing cluster have the same shape and
 are less obvious.
@@ -70,6 +72,53 @@ slot surfaces at Step 6 as a provider error that looks unrelated. Wire it with
 
 **Path B presents differently.** The bundle already declares the connection, so the symptom is an
 empty slot with nothing to fill it rather than a scoping decision. Same resolution.
+
+## Names the cloud won't change
+
+Bundles generally name resources from `md_metadata.name_prefix`, which is a naming convention
+customizable in Massdriver. It rarely equals the name of a resource that already exists, and most
+clouds can't rename a server, database, cluster or resource group without replacing it. Choosing
+project, environment and component slugs cannot fix this.
+
+The bundle needs a **name-override param** for each such name: `$md.immutable: true`, empty by
+default, and an empty value falls back to `name_prefix` so ordinary instances behave as before.
+Import sets it to the live name. On Path A, write it in from the start. On Path B, a bundle
+without one needs an edit — ask first (see Path B).
+
+## Values the cloud can't return
+
+Build the **import params** from what you read from the cloud: every param the live resource
+determines, filled without asking, even when a field looks sensitive. The exception is
+write-only values — admin passwords and some keys and tokens, which the API accepts but never
+returns. Those are the only params an import can't produce. For each one, ask the user which way
+to supply it. On Path B the bundle has already decided: a param can go either way, an
+`app.secrets` entry only as a secret.
+
+- **Hand it to Claude** — for a value that isn't really secret, or when the user accepts the
+  exposure. It goes in the PLAN and proposal params; say that it lands in the transcript. Auto
+  mode may deny that call as credential leakage even after the user agreed. If it does, stop and
+  have the user retry it from `/permissions` → *Recently denied*. Do not resend it another way.
+- **Instance secret** — for a value that is actually sensitive. The agent never sees it:
+  - Declare it under `app.secrets` in `massdriver.yaml` with an uppercase name
+    (`ADMIN_PASSWORD`, `required: true`).
+  - Read it through Massdriver's `massdriver-bundle` module, which exposes the secrets the
+    provisioner injects:
+    ```hcl
+    module "bundle" {
+      source = "github.com/massdriver-cloud/terraform-modules//massdriver-bundle?ref=2a7f3df"
+    }
+    locals {
+      admin_password = sensitive(module.bundle.secrets["ADMIN_PASSWORD"])
+    }
+    ```
+    Wrap it in `sensitive()` — the module's `secrets` output is not marked sensitive. Index
+    required secrets directly, so a missing one fails the plan; `try()` only for optional ones.
+  - The user sets the value in the UI. Never call `set_instance_secret` with it. No tool shows
+    whether a secret is set, so the PLAN is the check: a missing one fails on the index.
+
+Never invent, reuse or rotate a write-only value without asking. Whichever way it arrives, the
+plan shows the attribute as an in-place update — import cannot record a value the cloud never
+returns.
 
 ## Tooling for this workflow
 
@@ -95,10 +144,12 @@ up each new publish. **Import must not.** A release channel makes the platform r
 (`tofu apply`) on every publish — against infrastructure that already exists and may be
 production. An apply before the plan is clean can destroy or duplicate real resources.
 
-Pin **exact dev releases only**. `mass bundle publish --development` emits one per publish,
-timestamped: `1.2.3+dev-20260423T120000`. The timestamped form is a specific immutable release
-and is safe; the bare `+dev` suffix is the channel and is not. Re-pin explicitly after each
-publish — an exact pin never floats, so no publish can trigger anything on its own.
+Pin **exact dev releases only**. `mass bundle publish --development` emits one per publish:
+`<version>-dev.<UTC timestamp>`, e.g. `0.0.1-dev.20260929T000749Z`. That is a specific
+immutable release and is safe; `latest+dev` / `~1+dev` are channels and are not. Re-pin
+explicitly after each publish — an exact pin never floats, so no publish can trigger anything on
+its own. To pin a release you didn't just publish, take it from the repo's `tags` (`get_oci_repo`),
+not from what a channel resolves to — a channel can lag the newest tag.
 
 The deployment actions in this procedure are `create_deployment` with `action: PLAN`, and one
 `propose_deployment` at the end (Step 8) that a human approves. Nothing here provisions.
@@ -154,6 +205,17 @@ step, each with `stepName` (the step key from `massdriver.yaml`, commonly `src`)
 Note the value for Step 6 — do not export it here. For a multi-step bundle, import each
 resource into the state of the step whose IaC declares it.
 
+**Check the connection slots in the same response**, including the cloud credential. Every
+required slot must be filled before the PLAN, and a new project or environment usually has
+nothing bound. Imported resources or provisioned resources created by an instance in
+another environment can be set as a default for the entire environment (common for credentials)
+with `set_environment_default`, or can be set per-instance with `set_remote_reference`. Using
+an imported resource or a provisioned resource from another environment requires a 
+`resource:export` grant to exist granting permission to the current environment. If a grant
+doesn't exist, create one (`create_resource_grant`) and scope it with both the `md-project` and
+`md-environment` condition keys to only allow this specific environment. If unsure whether to use
+environment default or remote reference, ask the user which they prefer.
+
 ### Step 4: Select the http backend locally
 
 `TF_HTTP_*` only applies when the http backend is actually selected. If the bundle has no
@@ -185,16 +247,15 @@ the resource. Try in order, stop at the first that works:
    configuration — an environment variable, a CLI login, a key or service-account file the user
    already has. If their default credential can read the resource, you need nothing else.
 2. **Initialize the provider from the user's local credential.** Bundle provider blocks read from
-   a connection variable the platform populates (`var.<platform>_authentication.*`), which is
-   empty on your machine. Comment that block out and add a plain one beside it that uses the
-   provider's default credential resolution — or the key, access key, or service-account file the
-   user points you at. This is a **temporary local edit**; see the warning below.
+   the credential connection (`var.<platform>_authentication.*`, `var.azure_service_principal.*`),
+   which is empty on your machine. Comment that block out and add a plain one beside it that uses
+   the credential your rung needs — the provider's default resolution, a CLI login, or a key file
+   the user points you at. This is a **temporary local edit** to bundle source; see the warning
+   below.
 3. **Reproduce Massdriver's identity locally** — only if the user confirms they hold it and can
    use it from their machine. `get_environment` → defaults identifies the credential resource and
    `export_resource` returns its payload. That payload contains **unmasked secrets**, so confirm
-   before calling it and never echo the result. Then `mass bundle build` and write a throwaway
-   `import.auto.tfvars.json` in the step directory with `md_metadata`, the required params, and
-   the `<platform>_authentication` object.
+   before calling it and never echo the result, then put it in `import.auto.tfvars.json` below.
 
 **If none of those work, STOP and ask the user how they want to proceed** — most usefully, ask
 which credential they normally use for this account, project or subscription. Do not get
@@ -202,12 +263,21 @@ creative: no probing for credential files, no enumerating profiles, no trying ot
 no inventing an authentication path. Report the exact provider error and offer to hand them the
 `tofu import` command to run with their own credentials.
 
-> **Revert every provider edit before ANY `mass bundle publish`** — including the republish loop
-> in Step 7, not just the cleanup in Step 8. A provider block rewritten for local credentials
-> that reaches the platform breaks every instance of the bundle. `backend_import.tf` and
-> `import.auto.tfvars.json` are throwaway on the same terms: never committed, never published.
+**Every variable without a default needs a value**, whichever rung you're on. Run
+`mass bundle build`, then write a throwaway `import.auto.tfvars.json` in the step directory with
+`md_metadata`, the import params, and the credential object. On rungs 1 and 2 the provider never
+reads the credential, so placeholder strings are fine; never put a real secret there.
 
-### Step 6: Import, then plan through Massdriver
+**Secrets read through `module.bundle` are empty locally** — the module reads files only the
+provisioner writes, so `module.bundle.secrets["X"]` fails the import with an invalid-index error.
+Only after it fails, wrap that one index in `try(..., "")` for the import run.
+
+> **Nothing from this step reaches the platform.** The commented-out provider block, the local
+> one beside it, `backend_import.tf`, `import.auto.tfvars.json` and any `try()` wrapper are
+> throwaway: never committed, never published. A provider block rewritten for local credentials
+> that reaches the platform breaks every instance of the bundle.
+
+### Step 6: Import, clean up, then plan through Massdriver
 
 One invocation — the exports do not survive into a second Bash call, and any later `tofu`
 command needs the same preamble repeated:
@@ -221,22 +291,40 @@ export TF_HTTP_ADDRESS="<stateUrl from Step 3>"
 export TF_HTTP_LOCK_ADDRESS="$TF_HTTP_ADDRESS"
 export TF_HTTP_UNLOCK_ADDRESS="$TF_HTTP_ADDRESS"
 
-tofu init
-tofu import <resource.address> <cloud-provider-id>   # repeat per resource, same call
-tofu state list                                      # verify what landed in state
+tofu init -input=false
+tofu import -input=false <resource.address> <cloud-provider-id>   # repeat per resource, same call
+tofu state list                                                   # verify what landed in state
 ```
+
+**Clean up as soon as `tofu state list` shows every resource.** The state now lives in the
+backend and the PLAN runs from the published bundle, so nothing local is needed again. Restore
+the original provider block, revert any `try()` wrapper, delete `backend_import.tf`,
+`import.auto.tfvars.json`, `.terraform/` and the lock file `tofu init` created, and diff the
+bundle against what you started with — nothing from the local import may survive.
 
 Then verify the config matches reality by planning **in Massdriver's provisioner**:
 
-- Call `create_deployment` with `action: PLAN`, the **import params**, and a message. The
-  import params are the full param set that reproduces the live resource, built from what you
-  read from the cloud. On a never-deployed instance this is the only option —
+- Call `create_deployment` with `action: PLAN`, the import params (see *Values the cloud can't
+  return*), and a message. On a never-deployed instance this is the only option —
   `plan_deployment` replays an *existing* deployment's params and there isn't one yet.
 - **A PLAN does not save its params.** Only a deployment saves an instance's config, so the
   instance's form still holds the bundle defaults. A Deploy from the form would apply those
   defaults, not the import params — and on an imported resource that can mean replace.
 - Read the result with `get_deployment_logs` (`follow: true`).
-- The goal is a plan with **no changes**.
+
+**A clean plan** does **NOT** create, destroy or replace any of the imported resources. The only
+in-place updates it may show are write-only attributes (see *Values the cloud can't return*) and
+Massdriver's default tags on resources that were untagged. Creating the bundle's own
+`massdriver_resource` outputs is expected on the first deploy. Anything else means the HCL or the
+import params don't match the live resource. Tell the user which in-place updates the plan
+shows before you propose.
+
+**Checkov output prints plan values in plaintext**, including sensitive attributes of any
+resource it flags. Never quote Checkov blocks. If a secret sits on a flagged resource, tell the
+user it is exposed to anyone who can read the deployment logs and should be rotated after the
+deploy. Checkov failures don't block an import — they describe how the resource was built — but
+list them for the user before they approve; with `halt_on_failure` they would fail the approved
+deploy. Handle them later under [compliance.md](./compliance.md).
 
 **Never run `tofu plan` locally.** The provisioner has the correct credentials, the run is
 audited, and compliance tooling only executes there. `PLAN` deployments are exempt from the
@@ -244,27 +332,23 @@ hook's production block precisely because they cannot change anything.
 
 ### Step 7: Loop until the plan is clean
 
-If the plan proposes changes, the HCL doesn't match the live resource. Per iteration:
+If the plan isn't clean, the HCL or the import params don't match the live resource. Fix the
+params and re-plan, or per HCL iteration:
 
-1. Fix the HCL.
-2. **Restore the real provider block** if Step 5 changed it, and confirm `backend_import.tf` and
-   `import.auto.tfvars.json` are not staged for publish.
-3. `mass bundle publish --development` (the platform cannot see your filesystem).
-4. `update_instance` with the **exact dev release** that publish just emitted (e.g.
-   `1.2.3+dev-20260423T120000`) so the next plan runs the code you just fixed. Never a channel
-   constraint — see *No release channels, no deploys*.
-5. `create_deployment` (`action: PLAN`) + `get_deployment_logs follow:true`.
+1. Fix the HCL. The state is already imported — nothing local needs recreating.
+2. `mass bundle publish --development` (the platform cannot see your filesystem).
+3. `update_instance` with the **exact dev release** that publish just emitted, so the next plan
+   runs the code you just fixed — see *No release channels, no deploys*.
+4. `create_deployment` (`action: PLAN`) + `get_deployment_logs follow:true`.
 
 **If the plan proposes destroying or replacing an imported resource, STOP.** That means the
 config diverges from reality in a way an apply would act on. Reconcile the HCL; never deploy
 while the plan is dirty.
 
-### Step 8: Clean up and hand off
+### Step 8: Hand off
 
-Delete `backend_import.tf` and `import.auto.tfvars.json`, and restore the original provider
-block if Step 5 changed it. Diff the bundle against what you started with — nothing from the
-local import should survive. The instance now has real state and a clean plan; the actual
-`PROVISION` deploy is a separate, human-authorized decision — hand it off as a proposal.
+The instance now has real state and a clean plan; the `PROVISION` deploy is a separate,
+human-authorized decision — hand it off as a proposal.
 
 **Propose the deployment with the import params.** `propose_deployment` with `action:
 PROVISION`, the exact params from the last clean PLAN, and a message. The proposal is what
@@ -280,7 +364,7 @@ act on the imported resource, and stop.
 **Then check what this import made obsolete.** `list_resources` with `origin: IMPORTED`, scoped
 to the environment. If one of them represents the infrastructure you just brought into a bundle,
 it is now redundant — there is no reason to keep an imported resource once a provisioned one
-exists for the same thing.
+exists for the same thing. Credentials bound as defaults are inputs, not duplicates.
 
 **Report it, do not act on it.** The replacement cannot happen yet: the bundle's resource does
 not exist until the user approves the proposed deployment. And
@@ -306,11 +390,17 @@ deliberate work. Name the superseded resource and what retiring it would involve
    [SKILL.md](../SKILL.md) — fetch the platform resource type first
    (`mass resource-type get <platform>`), write `massdriver.yaml` and `src/`.
    - **Scope the bundle to the resource plus the dependencies it owns.** Importing a database
-     means also covering its security group, parameter group, and possibly subnet group — not 
-     just the DB. Match the HCL to what actually exists, or the plan will never come clean.
-   - **That list has a boundary**: the subnet group may belong in the bundle, the network it 
-     points at does not. See *Dependencies that belong to another bundle* — getting this wrong
+     means also covering what exists only for it — its firewall rules or security group, its
+     configuration or parameter group, a dedicated subnet, a resource group that holds nothing
+     else — not just the DB. Match the HCL to what actually exists, or the plan will never come
+     clean.
+   - **That list has a boundary**: a dedicated subnet may belong in the bundle, the network it
+     sits in does not. See *Dependencies that belong to another bundle* — getting this wrong
      is not a style question, it hands the bundle the power to destroy shared infrastructure.
+   - **Add a name-override param** for every name the cloud won't change — see *Names the cloud
+     won't change*.
+   - **Decide how each write-only value arrives** — a param or an `app.secrets` entry. See
+     *Values the cloud can't return*.
 2. **Ensure the OCI repository exists and is granted** — `get_oci_repo` with the bundle name;
    if absent, `create_oci_repo` (`artifact_type: BUNDLE`), then check `list_oci_repo_grants`
    covers the target project and `create_oci_repo_grant` if not. Without the grant,
@@ -319,7 +409,8 @@ deliberate work. Name the superseded resource and what retiring it would involve
 4. **Add to the blueprint** (MCP): `add_component`. Every environment in the project now has an
    instance; the one you want is `<project>-<env>-<component>`.
 5. **Pin the exact dev release** (MCP): `update_instance` with the version `mass bundle publish`
-   emitted, timestamp and all. Never `latest+dev` — see *No release channels, no deploys*.
+   emitted (`0.0.1-dev.20260929T000749Z`). Never `latest+dev` — see *No release channels, no
+   deploys*.
 6. Run **The State Import Procedure** against that (undeployed) instance.
 
 ## Path B: Existing Bundle
@@ -348,9 +439,10 @@ plainly in the handoff that the bundle changed and what it would mean for existi
 2. **Establish the target instance.** Ask the user whether to add the component to a new
    project/environment or import into an existing **undeployed** instance. Importing into an
    already-provisioned instance would collide with state it already owns — don't, unless the
-   user explicitly confirms that's what they want.
-3. **Pin the exact dev release** if you'll be republishing: `update_instance` with the
-   timestamped version, never a release channel — see *No release channels, no deploys*.
+   user explicitly confirms that's what they want. A new project needs the bundle's OCI repo
+   granted to it (`list_oci_repo_grants`, `create_oci_repo_grant`), or `add_component` fails.
+3. **Pin an exact release** with `update_instance` — the release you pulled, or the dev release
+   each republish emits. Never a release channel — see *No release channels, no deploys*.
 4. Run **The State Import Procedure**, prompting before any bundle edits.
 
 ## Path C: Register Resource Only
@@ -368,7 +460,7 @@ no instance.
    `ResourceType`, one entry per workflow — CLI, cloud console, etc.). If the type has them,
    follow them over the generic steps here.
 2. **Discover the live values** with the cloud CLI (`aws … describe`, `gcloud … describe`,
-   `az … show`) and build a payload that validates against the schema — the schema decides the
+   `az … show`; `az resource list --name <name>` finds the resource group first) and build a payload that validates against the schema — the schema decides the
    shape, not this example. Write it to a file:
    ```bash
    cat > /tmp/resource.json <<'JSON'

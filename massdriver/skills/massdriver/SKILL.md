@@ -18,7 +18,7 @@ Massdriver separates **design time** from **deploy time**:
 - **Link** — a design-time wire from one component's output field to another component's input field. Becomes a connection at deploy time.
 - **Environment** — a deployment context (e.g. `prod`, `staging`, `agentx7k2`). Environments materialize the blueprint into instances.
 - **Instance** — a deployed component in a specific environment. Slug is `<project>-<env>-<component>` (e.g. `ecomm-prod-db`).
-- **Resource** — the runtime output of an instance, conforming to a **resource type** (the schema contract). Bundles author "artifacts" in `massdriver.yaml`; those become resources at deploy time.
+- **Resource** — the runtime output of an instance, conforming to a **resource type** (the schema contract). Bundles declare the resources they publish under `resources:` in `massdriver.yaml`.
 
 Components are added exactly once, at the project level (`add_component`) — never per environment. Every environment automatically gets an instance for every component.
 
@@ -33,7 +33,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 
 ## Reference Files
 
-- [PATTERNS.md](./PATTERNS.md) - Complete bundle and artifact examples
+- [PATTERNS.md](./PATTERNS.md) - Complete bundle and resource examples
 - [references/graphql.md](./references/graphql.md) - GraphQL multi-entity queries
 - [references/alarms.md](./references/alarms.md) - Adding monitoring alarms (AWS/GCP/Azure)
 - [references/compliance.md](./references/compliance.md) - Post-deployment Checkov remediation
@@ -96,7 +96,7 @@ You'll likely need both a **project** and an **environment** before deploying an
 - Project slug, env suffix, component id: max 20 chars, lowercase alphanumeric only.
 - Instance slug = `<project>-<env>-<component>` (e.g. `ecomm-prod-db`).
 - `create_environment` takes the project via `project_id` and just the env suffix as `id`; every other tool takes the FULL `<project>-<env>` environment identifier.
-- Resource slug = `<project>-<env>-<component>.<artifact-field>` (e.g. `ecomm-prod-db.database`).
+- Resource slug = `<project>-<env>-<component>.<resource-field>` (e.g. `ecomm-prod-db.database`).
 
 ### Error Recovery
 
@@ -198,7 +198,7 @@ Understand compliance requirements:
 - Any checks to hardcode vs make user-configurable?
 - Note: Full findings emerge during deployment - iterate as they appear
 
-**5. Connections & Artifacts**
+**5. Dependencies & Resources**
 - What does this bundle need? What does it produce?
 - Run `mass resource-type list` (CLI) to see available resource type definitions
 - **Resource types and Terraform providers are 1:1** — always base provider config on the credential resource type's schema
@@ -222,7 +222,7 @@ Understand compliance requirements:
    - Resource types go live immediately — there is NO `--development` flag.
    - **Warning:** Published resource types are live immediately — avoid breaking changes.
 
-3. **Create massdriver.yaml** with params, connections, artifacts, UI ordering. Naming note: the bundle YAML section key is `artifacts:`, but what those publish (via `massdriver_resource` HCL resources) surface at deploy time as runtime "resources".
+3. **Create massdriver.yaml** with `params`, `dependencies:` (inputs), `resources:` (outputs, published via `massdriver_resource`), and UI ordering. Existing bundles may still use `connections:`/`artifacts:` for these sections; `mass bundle lint` warns about them.
 
 4. **Create Terraform code** — fetch the credential resource type FIRST:
    ```bash
@@ -305,7 +305,7 @@ For local development without deployments:
 # 1. Create/edit bundle files
 cd bundles/my-bundle
 
-# 2. Build schemas
+# 2. Generate src/_massdriver_variables.tf
 mass bundle build
 
 # 3. Validate IaC
@@ -337,7 +337,7 @@ mass server -p 8080 --browser
 
 **Resource**: An instance of a resource type containing actual data (credentials, connection strings). Created by bundles via the `massdriver_resource` Terraform resource, or by users (UI form / `create_resource` MCP tool).
 
-**Connection**: How instances receive resources at deploy time. Authored in `massdriver.yaml`, wired in the project blueprint via `link_components`, materialized as a connection in each environment, flows to Terraform as a variable at deploy. Overridable per instance with `set_remote_reference` (bind a slot to a resource from another project or an imported resource).
+**Connection**: How instances receive resources at deploy time. Declared under `dependencies:` in `massdriver.yaml`, wired in the project blueprint via `link_components`, materialized as a connection in each environment, flows to Terraform as a variable at deploy. Overridable per instance with `set_remote_reference` (bind a slot to a resource from another project or an imported resource).
 
 **Component**: A slot in a project's blueprint backed by a bundle. Added once via `add_component`. Every environment auto-instantiates every component.
 
@@ -415,39 +415,39 @@ Massdriver validates `massdriver.yaml` against:
 ## Critical Rules
 
 ### 1. NEVER Edit Generated Files
-Auto-generated by `mass bundle build` - changes will be overwritten:
-- `schema-*.json`
-- `_massdriver_variables.tf`
+`mass bundle build` writes `_massdriver_variables.tf` into each step's directory: one Terraform variable per param and dependency, plus `md_metadata`. Changes are overwritten on the next build.
 
 ### 2. Namespace Collision Warning
-Params and connections share Terraform variable namespace:
+Params and dependencies share Terraform variable namespace:
 ```yaml
 # BAD - Both create var.network
 params:
   properties:
     network:
-connections:
-  properties:
-    network:
+dependencies:
+  network:
 ```
 
-### 3. Artifact $ref Must Match Resource Type Name
+### 3. `resource_type` Is a Name Plus a Version Constraint
 ```yaml
-connections:
-  properties:
-    network:
-      $ref: network  # References resource-type/network/
+dependencies:
+  network:
+    resource_type: network@~1  # Name as `mass resource-type list` shows it, constrained to its current major
+    required: true
 ```
+Never leave the version off — that means `latest`, and a breaking resource type release breaks the
+bundle. Exact versions are fragile. See "Resource Type Versions" in [PATTERNS.md](./PATTERNS.md).
 
-### 4. artifacts.tf Must Match massdriver.yaml
+### 4. resources.tf Must Match massdriver.yaml
 ```yaml
 # massdriver.yaml
-artifacts:
-  properties:
-    database:  # <-- field name
+resources:
+  database:  # <-- field name
+    resource_type: postgres@~2
+    required: true
 ```
 ```hcl
-# src/artifacts.tf
+# src/resources.tf
 resource "massdriver_resource" "database" {
   field = "database"  # Must match
 }
@@ -483,14 +483,13 @@ Always `mass resource-type get <platform-name>` before writing a provider block.
 
 | File | Purpose | Editable? |
 |------|---------|-----------|
-| `massdriver.yaml` | Source of truth - params, connections, artifacts, UI | Yes |
+| `massdriver.yaml` | Source of truth - params, dependencies, resources, UI | Yes |
 | `README.md` | Bundle documentation (displayed in UI) | Yes |
 | `src/main.tf` | IaC code | Yes |
-| `src/artifacts.tf` | massdriver_resource resources | Yes |
+| `src/resources.tf` | massdriver_resource resources | Yes |
 | `src/.checkov.yml` | Checkov skip rules | Yes |
 | `operator.md` | Runbook with mustache templating | Yes |
-| `schema-*.json` | Generated schemas | **Never** |
-| `_massdriver_variables.tf` | Generated variables | **Never** |
+| `src/_massdriver_variables.tf` | Generated variables | **Never** |
 
 ---
 
@@ -534,7 +533,19 @@ provider "aws" {
 }
 ```
 
-### Accessing Connection Data
+Azure takes the service principal fields directly:
+
+```hcl
+provider "azurerm" {
+  features {}
+  client_id       = var.azure_service_principal.client_id
+  client_secret   = var.azure_service_principal.client_secret
+  subscription_id = var.azure_service_principal.subscription_id
+  tenant_id       = var.azure_service_principal.tenant_id
+}
+```
+
+### Accessing Dependency Data
 
 ```hcl
 var.network.id
@@ -542,7 +553,7 @@ var.database.auth.hostname
 [for s in var.network.subnets : s.id if s.type == "private"]
 ```
 
-### Creating Artifacts
+### Publishing Resources
 
 ```hcl
 resource "massdriver_resource" "database" {
@@ -593,17 +604,16 @@ params:
         value: .name
 ```
 
-### Optional Connections
+### Optional Dependencies
 
 ```yaml
-connections:
-  required:
-    - network  # Required
-  properties:
-    network:
-      $ref: network
-    bucket:
-      $ref: bucket  # Optional - not in required
+dependencies:
+  network:
+    resource_type: network@~1
+    required: true
+  bucket:
+    resource_type: bucket@~0
+    required: false  # var.bucket defaults to null
 ```
 
 ```hcl
@@ -669,10 +679,10 @@ A skipped check is skipped EVERYWHERE — `halt_on_failure` does NOTHING for ski
 Before publishing:
 - [ ] `mass bundle build` succeeds
 - [ ] `mass bundle lint` is clean (or run `mass bundle publish --development --fail-warnings`)
-- [ ] No param/connection name conflicts
-- [ ] Every artifact has matching `massdriver_resource` resource
+- [ ] No param/dependency name conflicts
+- [ ] Every `resources:` entry has a matching `massdriver_resource` resource
 - [ ] `tofu init && tofu validate` passes
-- [ ] Artifact JSON matches the resource type's schema
+- [ ] Resource JSON matches the resource type's schema
 - [ ] Required providers include `massdriver-cloud/massdriver`
 - [ ] Provider block based on `mass resource-type get <platform>` output (not guessed)
 
@@ -682,11 +692,11 @@ Before publishing:
 
 | Mistake | Fix |
 |---------|-----|
-| Coupled lifecycles (VPC in database bundle) | Use connections for foundational resources |
+| Coupled lifecycles (VPC in database bundle) | Use dependencies for foundational resources |
 | Provider auth fails | `mass resource-type get <platform>` first, use ALL fields, `try()` for optional |
 | "variable not declared" | Run `mass bundle build` |
-| Param/connection name collision | Rename one |
-| artifacts.tf field mismatch | Ensure `field = "X"` matches `artifacts.properties.X` |
+| Param/dependency name collision | Rename one |
+| resources.tf field mismatch | Ensure `field = "X"` matches `resources.X` |
 | Publishing stable during development | Use `--development` flag always until production-ready |
 | Forgot to publish after code change | Platform can't read local files — always publish |
 | Instance not picking up new release after publish | Pin the development channel: `update_instance` with version `latest+dev` |
@@ -725,7 +735,7 @@ mass resource-type list
 mass resource-type get <name>            # ALWAYS do before writing providers
 
 # Build / Lint / Local
-mass bundle build                        # Generate schemas + variables
+mass bundle build                        # Generate _massdriver_variables.tf per step
 mass bundle lint                         # Check massdriver.yaml for errors
 mass bundle new -n my-bundle -t opentofu # Scaffold from a template
 mass bundle pull <name>                  # Pull a published bundle to disk

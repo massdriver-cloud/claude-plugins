@@ -67,8 +67,8 @@ UI step is needed, give the user clear instructions (with a `get_url` deep link)
 
 ## Terminology (use it consistently)
 
-- Say **resource** and **resource type** in all prose — never "artifact." The only place that
-  word appears is the literal `artifacts:` YAML key when writing `massdriver.yaml`.
+- Say **resource** and **resource type** in all prose — never "artifact." In `massdriver.yaml`
+  the section keys are `dependencies:` and `resources:`.
 - Distinguish the two "reuse" verbs — they are different actions and citizen developers conflate
   them:
   - **Instantiate a catalog bundle**: add an approved bundle as a NEW dedicated component in the

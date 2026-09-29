@@ -30,25 +30,19 @@ params:
       # $md.immutable: true        # Cannot change after creation
       # $md.sensitive: true        # Hide in UI (for secrets)
 
-connections:
-  required:
-    # - network                    # Uncomment if required
-  properties:
-    network:
-      $ref: network                # Must match resource-type/network.json
-      title: Network               # Display name
-    # Add more connections as needed:
-    # database:
-    #   $ref: postgres
-    #   title: Database
+dependencies:
+  network:
+    resource_type: network@~1      # <name>@~<its major> — see PATTERNS.md "Resource Type Versions"
+    required: false                # true = must be connected before deploy
+  # Add more dependencies as needed:
+  # database:
+  #   resource_type: postgres@~2
+  #   required: true
 
-artifacts:
-  required:
-    - my_artifact                  # List required artifact names
-  properties:
-    my_artifact:
-      $ref: my-artifact-type       # Must match resource-type/<name>.json
-      title: My Artifact           # Display name
+resources:
+  my_resource:                     # Must match `field` in the massdriver_resource block
+    resource_type: my-resource-type@~0
+    required: true
 
 steps:
   - path: src                      # Directory containing IaC code
