@@ -23,7 +23,7 @@ decides which resource versions a dependency accepts and which version a resourc
 A major-version constraint is safe as long as resource type releases follow semver: breaking
 changes bump the major. Get the current version from `mass resource-type get <name>` and
 constrain to its major. Version `0.0.0` is a special case: it is mutable, so a type at `0.0.0`
-changes in place rather than through new versions.
+changes in place rather than through new versions. Constrain it with `@~0`.
 
 ## Complete Bundle Examples
 

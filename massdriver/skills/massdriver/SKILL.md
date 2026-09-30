@@ -477,6 +477,12 @@ Use provider-native attributes instead. Example: SES SMTP passwords come from
 ### 7. Resource Types and Providers Are 1:1
 Always `mass resource-type get <platform-name>` before writing a provider block. The provider must use ONLY the fields from the credential resource type's schema.
 
+### 8. Replace-Forcing Params Are Immutable
+If changing an argument makes the provider destroy and recreate the resource (`ForceNew` in the provider's schema; "forces replacement" in a plan), every param that feeds it gets `$md.immutable: true`. Otherwise a routine edit in the UI becomes a delete.
+
+### 9. Prefer Independent Resources Over Inline Blocks
+When a provider can express a child object either as a nested block on its parent or as its own resource, use the independent resource and never both for the same object — the two fight over it and the plan never settles. Independent resources can be added, removed and imported one at a time.
+
 ---
 
 ## File Responsibilities

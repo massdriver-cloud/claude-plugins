@@ -96,10 +96,10 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
    Import never provisions. A human approves the proposal; never tell them to Deploy from the
    instance form. Procedure Step 8 has the hand-off.
 10. **A dependency that belongs to another bundle is a STOP.** If the resource depends on
-    infrastructure that isn't in Massdriver yet (a network, a cluster, a shared key), never
-    smuggle it in as bundle params or absorb it into the bundle. Ask the user: halt and model it
-    properly first, or register it as an imported resource (Path C) to unblock this import. See
-    "Dependencies that belong to another bundle" in the reference.
+    infrastructure that isn't in Massdriver yet and would outlive it, never smuggle it in as
+    bundle params or absorb it into the bundle. Ask the user: halt and model it properly first,
+    or register it as an imported resource (Path C) to unblock this import. See "Dependencies that
+    belong to another bundle" in the reference.
 11. **Editing an existing bundle affects every instance using it.** On Path B the goal is to use
     the bundle as-is. If the live resource's configuration genuinely can't be expressed through
     params, stop and ask before changing bundle source, and keep the change backward compatible:
@@ -118,9 +118,10 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
     before any `mass bundle publish`. A local provider config that reaches the platform breaks every
     instance of the bundle.
 16. **Write-only values are the user's call.** Fill every param the cloud returns yourself. For
-    a value the cloud never returns (admin passwords, some keys), ask the user whether to hand it
-    to you or set it as an instance secret — "Values the cloud can't return" in the reference.
-    Never set a secret's value yourself, never quote Checkov output, and never invent a value.
+    a value the cloud never returns (write-only passwords, keys, tokens), ask the user whether to
+    hand it to you or set it as an instance secret — "Values the cloud can't return" in the
+    reference. Never set a secret's value yourself, never quote Checkov output, and never invent
+    a value.
 
 ## Phase 1: Choose (or confirm) the Import Path
 
@@ -187,8 +188,9 @@ Do not probe environment variables, read credential files, or retry a failing co
 
 Follow [references/import.md](../skills/massdriver/references/import.md) for the path:
 
-- **Path A** — author the bundle (scope it to the resource *and* what exists only for it; ask
-  when membership is ambiguous; name fields for names the cloud won't change), ensure
+- **Path A** — author the bundle (scope it to the resource *and* what shares its lifecycle; ask
+  when membership is ambiguous; immutable params, including name overrides, for settings the
+  cloud won't change; ask whether to reuse an existing output resource type or author one), ensure
   the OCI repo exists and is granted, publish `--development`, `add_component`,
   `update_instance` to the exact dev release, then run the State Import Procedure.
 - **Path B** — identify the bundle, confirm its backend, establish an **undeployed** target

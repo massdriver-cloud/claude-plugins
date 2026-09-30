@@ -28,31 +28,26 @@ same resource. **Never add `import {}` blocks to a bundle.** Adopt state with th
 ## Dependencies that belong to another bundle
 
 Real infrastructure has dependencies, and some of them are not part of the thing you are
-importing. A database sits in a network. If that network is not already in Massdriver — as a
-bundle's output or as an imported resource — the import is blocked, and both obvious ways out are
-wrong:
+importing. An example: a database may require a network. If the network is not already in 
+Massdriver — as a bundle's output or as an imported resource — the import is blocked, and both 
+obvious ways out are wrong:
 
-- **Network values as bundle params.** One line, and the plan goes clean. But the network's
-  identity becomes deploy-time config instead of a modeled dependency: nothing on the canvas
+- **The dependency's values as bundle params.** This makes the dependency's identity a 
+  deploy-time config instead of a modeled dependency: nothing on the canvas or in the platform
   shows the relationship, nothing stops the value drifting, and every new environment retypes it.
-- **The network inside the bundle.** Worse. The bundle claims a resource it did not create and
-  that other things depend on; destroying the instance would try to destroy the network.
+- **The dependency inside the bundle.** Worse. The bundle claims ownership of a resource it did 
+  not create and that other things may depend on; destroying the instance would destroy the 
+  dependency.
 
 ### Where the line is
 
 Two questions, cheapest first:
 
-1. **Does anything else already use it?** If yes it cannot go in this bundle — destroying the
-   bundle would break the others.
-2. **Do the resources share a lifecycle?** Cloud resources that share a lifecycle with the
-   resource being imported should be included: if destroying the imported resource should also
-   destroy them, they belong in the bundle. In the database example, configuration or parameter
-   groups, a dedicated subnet, firewall rules or a security group created for this database, a
-   resource group or project that holds nothing else: yes, they die with it. A network, a DNS
-   zone, a key shared across services, a cluster: no. Those are connections.
-
-This generalizes past networks — a shared KMS key and an existing cluster have the same shape and
-are less obvious.
+1. **Does anything else use it?** If yes it cannot go in this bundle — destroying the bundle
+   would break the others.
+2. **Do the resources share a lifecycle?** If destroying the imported resource should also
+   destroy it — it exists only to serve the imported resource — it belongs in the bundle. If it
+   would outlive the imported resource, it is a connection.
 
 ### What to do
 
@@ -73,26 +68,28 @@ slot surfaces at Step 6 as a provider error that looks unrelated. Wire it with
 **Path B presents differently.** The bundle already declares the connection, so the symptom is an
 empty slot with nothing to fill it rather than a scoping decision. Same resolution.
 
-## Names the cloud won't change
+## Settings the cloud won't change
 
-Bundles generally name resources from `md_metadata.name_prefix`, which is a naming convention
-customizable in Massdriver. It rarely equals the name of a resource that already exists, and most
-clouds can't rename a server, database, cluster or resource group without replacing it. Choosing
-project, environment and component slugs cannot fix this.
+Some settings can't be changed on a live resource — the provider replaces the resource instead
+(`ForceNew` in the provider's schema). Every param that feeds one is immutable ([SKILL.md](../SKILL.md)
+Critical Rule 8), and import sets it from the live value.
 
-The bundle needs a **name-override param** for each such name: `$md.immutable: true`, empty by
-default, and an empty value falls back to `name_prefix` so ordinary instances behave as before.
-Import sets it to the live name. On Path A, write it in from the start. On Path B, a bundle
-without one needs an edit — ask first (see Path B).
+Names are the case you will commonly hit. Bundles generally name resources from
+`md_metadata.name_prefix`, which rarely equals the name of a resource that already exists.
+Choosing project, environment and component slugs cannot fix this. The bundle needs a
+**name-override param** for each such name: immutable, empty by default, and an empty value falls
+back to `name_prefix` so ordinary instances behave as before. Import sets it to the live name.
+
+On Path A, write these params in from the start. On Path B, a bundle without them needs an edit —
+ask first (see Path B).
 
 ## Values the cloud can't return
 
 Build the **import params** from what you read from the cloud: every param the live resource
 determines, filled without asking, even when a field looks sensitive. The exception is
-write-only values — admin passwords and some keys and tokens, which the API accepts but never
-returns. Those are the only params an import can't produce. For each one, ask the user which way
-to supply it. On Path B the bundle has already decided: a param can go either way, an
-`app.secrets` entry only as a secret.
+write-only values — passwords, keys and tokens the API accepts but never returns. Those are the
+only params an import can't produce. For each one, ask the user which way to supply it. On Path B
+the bundle has already decided: a param can go either way, an `app.secrets` entry only as a secret.
 
 - **Hand it to Claude** — for a value that isn't really secret, or when the user accepts the
   exposure. It goes in the PLAN and proposal params; say that it lands in the transcript. Auto
@@ -100,7 +97,7 @@ to supply it. On Path B the bundle has already decided: a param can go either wa
   have the user retry it from `/permissions` → *Recently denied*. Do not resend it another way.
 - **Instance secret** — for a value that is actually sensitive. The agent never sees it:
   - Declare it under `app.secrets` in `massdriver.yaml` with an uppercase name
-    (`ADMIN_PASSWORD`, `required: true`).
+    (`<SECRET_NAME>`, `required: true`).
   - Read it through Massdriver's `massdriver-bundle` module, which exposes the secrets the
     provisioner injects:
     ```hcl
@@ -108,7 +105,7 @@ to supply it. On Path B the bundle has already decided: a param can go either wa
       source = "github.com/massdriver-cloud/terraform-modules//massdriver-bundle?ref=2a7f3df"
     }
     locals {
-      admin_password = sensitive(module.bundle.secrets["ADMIN_PASSWORD"])
+      secret_value = sensitive(module.bundle.secrets["<SECRET_NAME>"])
     }
     ```
     Wrap it in `sensitive()` — the module's `secrets` output is not marked sensitive. Index
@@ -168,7 +165,7 @@ Look at the bundle's `src/` for a `terraform { backend ... }` block:
 
 - **No backend block** (the normal case — Massdriver's provisioner supplies state config): fine.
 - **Empty `http` backend** (`terraform { backend "http" {} }`): fine.
-- **Any other backend** (`s3`, `gcs`, `azurerm`, or an `http` backend with arguments): the
+- **Any other backend** (any other backend type, or an `http` backend with arguments): the
   bundle is NOT on Massdriver-managed state. Stop and tell the user — import cannot proceed
   until state lives on Massdriver.
 
@@ -247,9 +244,9 @@ the resource. Try in order, stop at the first that works:
    configuration — an environment variable, a CLI login, a key or service-account file the user
    already has. If their default credential can read the resource, you need nothing else.
 2. **Initialize the provider from the user's local credential.** Bundle provider blocks read from
-   the credential connection (`var.<platform>_authentication.*`, `var.azure_service_principal.*`),
-   which is empty on your machine. Comment that block out and add a plain one beside it that uses
-   the credential your rung needs — the provider's default resolution, a CLI login, or a key file
+   the credential connection, which is empty on your machine. Comment that block out and add a
+   plain one beside it that uses the credential your rung needs — the provider's default
+   resolution, a CLI login, or a key file
    the user points you at. This is a **temporary local edit** to bundle source; see the warning
    below.
 3. **Reproduce Massdriver's identity locally** — only if the user confirms they hold it and can
@@ -267,6 +264,20 @@ no inventing an authentication path. Report the exact provider error and offer t
 `mass bundle build`, then write a throwaway `import.auto.tfvars.json` in the step directory with
 `md_metadata`, the import params, and the credential object. On rungs 1 and 2 the provider never
 reads the credential, so placeholder strings are fine; never put a real secret there.
+
+`md_metadata` is a full object — a partial one fails type checking. Match the type in
+`_massdriver_variables.tf`; with the current CLI that is:
+
+```json
+"md_metadata": {
+  "name_prefix": "<instance name from get_instance>",
+  "default_tags": {},
+  "deployment": { "id": "import" },
+  "observability": { "alarm_webhook_url": "" },
+  "package": { "created_at": "", "deployment_enqueued_at": "", "previous_status": "", "updated_at": "" },
+  "target": { "contact_email": "" }
+}
+```
 
 **Secrets read through `module.bundle` are empty locally** — the module reads files only the
 provisioner writes, so `module.bundle.secrets["X"]` fails the import with an invalid-index error.
@@ -377,7 +388,7 @@ deliberate work. Name the superseded resource and what retiring it would involve
 - **Wrong resource imported**: `tofu state rm <resource.address>`, then re-import correctly.
 - **State lock stuck** (an interrupted run): `orphan_instance` can clear state locks, but it
   also resets the instance to `INITIALIZED`. Confirm with the user first.
-- **Provider errors about a missing network, cluster or other upstream**: usually an unfilled
+- **Provider errors about a missing upstream resource**: usually an unfilled
   connection slot, not a credential problem. See *Dependencies that belong to another bundle*.
 - **Import fails on provider auth**: expected when Massdriver's identity is scoped to the
   provisioner. Work the Step 5 ladder, then stop and ask. Do not improvise a credential path.
@@ -389,18 +400,20 @@ deliberate work. Name the superseded resource and what retiring it would involve
 1. **Author the bundle** using the normal bundle-development guidance in
    [SKILL.md](../SKILL.md) — fetch the platform resource type first
    (`mass resource-type get <platform>`), write `massdriver.yaml` and `src/`.
-   - **Scope the bundle to the resource plus the dependencies it owns.** Importing a database
-     means also covering what exists only for it — its firewall rules or security group, its
-     configuration or parameter group, a dedicated subnet, a resource group that holds nothing
-     else — not just the DB. Match the HCL to what actually exists, or the plan will never come
-     clean.
-   - **That list has a boundary**: a dedicated subnet may belong in the bundle, the network it
-     sits in does not. See *Dependencies that belong to another bundle* — getting this wrong
+   - **Scope the bundle to the resource plus what shares its lifecycle** — everything that
+     exists only to serve it, not just the resource itself. Match the HCL to what actually
+     exists, or the plan will never come clean.
+   - **That scope has a boundary**: anything that would outlive the resource is a connection, not
+     part of the bundle. See *Dependencies that belong to another bundle* — getting this wrong
      is not a style question, it hands the bundle the power to destroy shared infrastructure.
-   - **Add a name-override param** for every name the cloud won't change — see *Names the cloud
-     won't change*.
+   - **Make every replace-forcing param immutable, and add name overrides** — see *Settings the
+     cloud won't change*.
    - **Decide how each write-only value arrives** — a param or an `app.secrets` entry. See
      *Values the cloud can't return*.
+   - **Choose the output resource type with the user.** Look for an existing type that fits
+     (`mass resource-type list`, then `get`). If one appears to match, ask whether to reuse it or
+     author a new one; if none does, ask before authoring one. A new resource type is live for the
+     whole organization as soon as it is published.
 2. **Ensure the OCI repository exists and is granted** — `get_oci_repo` with the bundle name;
    if absent, `create_oci_repo` (`artifact_type: BUNDLE`), then check `list_oci_repo_grants`
    covers the target project and `create_oci_repo_grant` if not. Without the grant,
@@ -459,9 +472,8 @@ no instance.
    Resource types can ship their own import instructions (the `instructions` field on
    `ResourceType`, one entry per workflow — CLI, cloud console, etc.). If the type has them,
    follow them over the generic steps here.
-2. **Discover the live values** with the cloud CLI (`aws … describe`, `gcloud … describe`,
-   `az … show`; `az resource list --name <name>` finds the resource group first) and build a payload that validates against the schema — the schema decides the
-   shape, not this example. Write it to a file:
+2. **Discover the live values** with the cloud's CLI or API and build a payload that validates
+   against the schema — the schema decides the shape, not this example. Write it to a file:
    ```bash
    cat > /tmp/resource.json <<'JSON'
    { "infrastructure": { "<id-field>": "…" }, "<cloud>": { "region": "…" } }
