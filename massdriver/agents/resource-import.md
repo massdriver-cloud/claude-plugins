@@ -147,7 +147,7 @@ resource — change it, deploy updates, eventually destroy it — or just let ot
 *connect* to it?" Manage → A/B. Connect only → C.
 
 Then read only the matching section of
-[references/import.md](../skills/massdriver/references/import.md).
+[references/import.md](../skills/massdriver/references/import.md) and the sections it links to.
 
 ## Phase 2: Environment & Credentials Setup (scoped to the chosen path)
 
@@ -160,7 +160,10 @@ Set up **only what the chosen path needs**.
 2. Run `mass whoami` to confirm the CLI authenticates as the same entity.
 3. Tell the user what identity and organization you're operating as and confirm they want to
    proceed.
-4. Establish the target project and environment (`get_project` / `get_environment`, or
+4. **Find the live resource with the user's cloud credential** before creating anything in
+   Massdriver. If it doesn't exist, or their credential can't read it, stop and ask — don't
+   create a project, environment or bundle for something you can't import.
+5. Establish the target project and environment (`get_project` / `get_environment`, or
    `create_project` / `create_environment`). Instance slugs are `<project>-<env>-<component>` —
    never double-prefix. Before creating either, `list_custom_attributes`: the organization may
    require attributes on projects and environments. Ask the user for the values; don't pick them.
@@ -173,9 +176,8 @@ Set up **only what the chosen path needs**.
 - `tofu import` needs the provider to authenticate for real, locally, and the identity Massdriver
   provisions with often **cannot** be reproduced on the user's machine by design — delegated
   identity scoped to the provisioner, whatever the cloud calls it. You don't need Massdriver's
-  credential to work locally, you need any of the user's that can read the resource. Confirm they 
-  have one for the target account before you get deep into bundle authoring. Procedure Step 5 has 
-  the ladder and the line where you stop and ask.
+  credential to work locally, you need any of the user's that can read the resource — the one
+  step 4 used. Procedure Step 5 has the ladder and the line where you stop and ask.
 
 **Path C:** nothing further. No state backend, no cloud credentials — Massdriver won't deploy it.
 

@@ -43,7 +43,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 ## Safety Rules
 
 1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
-2. **NEVER** configure or deploy to production environments
+2. **NEVER** provision or decommission production. Configuring production and running plans against it are fine.
 3. **ALWAYS** pass a `message` when creating deployments (`create_deployment`, `propose_deployment`)
 4. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
 5. **ALWAYS** watch deployment logs after every deploy (`get_deployment_logs` with `follow: true`)
@@ -156,7 +156,11 @@ Three paths, chosen up front: author a **new bundle**, reuse an **existing bundl
 state with the imperative `tofu import` command against the instance's managed state — never
 `import {}` blocks, which would hardcode one cloud resource ID into source shared by every
 instance. Import runs locally; the plan runs in the provisioner via `create_deployment` with
-`action: PLAN`. See [references/import.md](./references/import.md).
+`action: PLAN`. **Import never provisions any instance** — the resources already exist, and a
+deploy before the plan is clean can destroy or duplicate them. For the same reason it pins exact
+releases, never a `+dev` channel: a channel deploys on every publish. The channel advice
+elsewhere in this skill is for bundle development only. See
+[references/import.md](./references/import.md).
 
 ---
 
@@ -705,7 +709,7 @@ Before publishing:
 | resources.tf field mismatch | Ensure `field = "X"` matches `resources.X` |
 | Publishing stable during development | Use `--development` flag always until production-ready |
 | Forgot to publish after code change | Platform can't read local files — always publish |
-| Instance not picking up new release after publish | Pin the development channel: `update_instance` with version `latest+dev` |
+| Instance not picking up new release after publish | Bundle development: pin the development channel, `update_instance` with version `latest+dev`. Import: re-pin the exact release instead |
 | Assumed a release-channel flag or enum | Channels ride the version constraint: `latest+dev` / `~1+dev` for development, `latest` / `~1` for stable |
 | Tried `mass pkg create` / `mass component add` for deploys | `add_component` (MCP) once at the project level |
 | Tried `mass pkg cfg` to set params | Params travel with each `create_deployment` call |
