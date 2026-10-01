@@ -119,7 +119,8 @@ command against the instance's Massdriver-managed HTTP state backend — **not `
 blocks**, which would hardcode one cloud resource ID into source shared by every instance. The
 import runs locally, but the plan runs in Massdriver's provisioner — never `tofu plan` locally,
 where credentials and compliance checks don't apply. The agent loops import → publish → re-plan
-until the plan comes back clean, before anything is deployed.
+until the plan comes back clean, then proposes a deployment with the params that planned clean.
+Nothing deploys until you approve that proposal.
 
 > Not to be confused with `mass bundle import`, which scans a bundle's IaC for variables not yet
 > exposed as Massdriver params.
