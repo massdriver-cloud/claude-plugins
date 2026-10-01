@@ -5,8 +5,25 @@ Complete examples for bundles, resource types, and platforms. Use these for copy
 > **Naming note:**
 > - Schema contracts are **resource types**, and they live in `resource-type/<name>/massdriver.yaml`.
 > - The Terraform provider's HCL resource is `massdriver_resource`.
-> - The bundle YAML keeps the section keys `params:`, `connections:`, and `artifacts:` — those are unchanged.
-> - At runtime they are "resources" (MCP tools `get_resource` / `export_resource` / `create_resource`). The "artifact" you write in HCL becomes a "resource" at deploy time.
+> - The bundle YAML section keys are `params:`, `dependencies:` (inputs), and `resources:` (outputs).
+> - Published resources are managed at runtime with the MCP tools `get_resource` / `export_resource` / `create_resource`.
+
+## Resource Type Versions
+
+Every `resource_type` in `dependencies:` and `resources:` takes `<name>@<version>`. The version
+decides which resource versions a dependency accepts and which version a resource produces:
+
+| `resource_type` | Accepts / produces | |
+|---|---|---|
+| `aws-iam-role@~1` | any `1.x.x` | **Default.** Constrain to the major version. |
+| `aws-iam-role@~1.2` | any `1.2.x` | When the bundle needs something added in a minor release. |
+| `aws-iam-role@1.2.3` | exactly `1.2.3` | Fragile — a `1.2.4` patch is neither accepted as an input nor produced as an output. |
+| `aws-iam-role` | `latest` | **Never.** A resource type release with a breaking change breaks the bundle. |
+
+A major-version constraint is safe as long as resource type releases follow semver: breaking
+changes bump the major. Get the current version from `mass resource-type get <name>` and
+constrain to its major. Version `0.0.0` is a special case: it is mutable, so a type at `0.0.0`
+changes in place rather than through new versions. Constrain it with `@~0`.
 
 ## Complete Bundle Examples
 
@@ -14,7 +31,7 @@ Complete examples for bundles, resource types, and platforms. Use these for copy
 
 This pattern shows a database bundle that:
 - Requires a network connection
-- Produces a database artifact with auth credentials and access policies
+- Produces a database resource with auth credentials and access policies
 - Uses immutable version field
 
 **massdriver.yaml**:
@@ -53,21 +70,15 @@ params:
       default: "postgres"
       pattern: ^[a-z][a-z0-9_]*$
 
-connections:
-  required:
-    - network
-  properties:
-    network:
-      $ref: network
-      title: Network
+dependencies:
+  network:
+    resource_type: network@~1
+    required: true
 
-artifacts:
-  required:
-    - database
-  properties:
-    database:
-      $ref: postgres
-      title: PostgreSQL Database
+resources:
+  database:
+    resource_type: postgres@~2
+    required: true
 
 steps:
   - path: src
@@ -134,7 +145,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-**src/artifacts.tf**:
+**src/resources.tf**:
 ```hcl
 resource "massdriver_resource" "database" {
   field = "database"
@@ -205,24 +216,21 @@ params:
         options: .policies
         value: .name
 
-connections:
-  required:
-    - network
-    - database
-  properties:
-    network:
-      $ref: network
-    database:
-      $ref: postgres
-    bucket:
-      $ref: bucket  # Optional - not in required array
+dependencies:
+  network:
+    resource_type: network@~1
+    required: true
+  database:
+    resource_type: postgres@~2
+    required: true
+  bucket:
+    resource_type: bucket@~0
+    required: false  # var.bucket defaults to null
 
-artifacts:
-  required:
-    - application
-  properties:
-    application:
-      $ref: application
+resources:
+  application:
+    resource_type: application@~0
+    required: true
 
 steps:
   - path: src
@@ -236,7 +244,7 @@ ui:
     - "*"
 ```
 
-**src/main.tf** (handling optional connections):
+**src/main.tf** (handling optional dependencies):
 ```hcl
 terraform {
   required_version = ">= 1.0"
@@ -303,7 +311,7 @@ resource "kubernetes_deployment" "main" {
 
 ---
 
-### Foundation Bundle (No Connections Pattern)
+### Foundation Bundle (No Dependencies Pattern)
 
 **massdriver.yaml**:
 ```yaml
@@ -344,16 +352,10 @@ params:
             type: string
             enum: [public, private]
 
-connections:
-  required: []
-  properties: {}
-
-artifacts:
-  required:
-    - network
-  properties:
-    network:
-      $ref: network
+resources:
+  network:
+    resource_type: network@~1
+    required: true
 
 steps:
   - path: src
@@ -676,13 +678,10 @@ schema:
 
 ```yaml
 # Bundle's massdriver.yaml - declares it needs AWS credentials
-connections:
-  required:
-    - aws_authentication
-  properties:
-    aws_authentication:
-      $ref: aws-iam-role
-      title: AWS Credentials
+dependencies:
+  aws_authentication:
+    resource_type: aws-iam-role@~1
+    required: true
 ```
 
 ```hcl
@@ -693,6 +692,18 @@ provider "aws" {
     role_arn    = var.aws_authentication.arn
     external_id = var.aws_authentication.external_id
   }
+}
+```
+
+Azure is the same shape with an `azure-service-principal` dependency:
+
+```hcl
+provider "azurerm" {
+  features {}
+  client_id       = var.azure_service_principal.client_id
+  client_secret   = var.azure_service_principal.client_secret
+  subscription_id = var.azure_service_principal.subscription_id
+  tenant_id       = var.azure_service_principal.tenant_id
 }
 ```
 
@@ -755,25 +766,24 @@ around interpolated values so the runbook renders clean before first deploy.
 params:
   properties:
     database:
-connections:
-  properties:
-    database:
+dependencies:
+  database:
 
 # GOOD - Distinct names
 params:
   properties:
     database_name:
-connections:
-  properties:
-    database:
+dependencies:
+  database:
 ```
 
 ### Mismatched Field Names
 ```yaml
 # massdriver.yaml
-artifacts:
-  properties:
-    postgres_db:      # <-- field name
+resources:
+  postgres_db:        # <-- field name
+    resource_type: postgres@~2
+    required: true
 ```
 ```hcl
 # BAD
@@ -782,15 +792,14 @@ resource "massdriver_resource" "database" {
 }
 ```
 
-### Don't Include .json in $ref
+### Don't Include .json in resource_type
 ```yaml
 # BAD
-$ref: network.json
+resource_type: network.json
 
 # GOOD
-$ref: network
+resource_type: network@~1
 ```
 
 ### Never Edit Generated Files
-- `schema-*.json`
-- `_massdriver_variables.tf`
+- `src/_massdriver_variables.tf` (rewritten by every `mass bundle build`)

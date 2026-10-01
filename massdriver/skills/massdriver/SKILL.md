@@ -1,6 +1,6 @@
 ---
 name: massdriver
-description: Develop and test Massdriver infrastructure bundles. Operates in three modes - FULL (interactive deploy loop via /massdriver:develop), UPGRADE TESTING (day 2 validation via /massdriver:test-upgrade), or BUILD-ONLY (/massdriver:gen for local scaffolding). Auto-activates when working with massdriver.yaml, bundles/, resource-type/, platforms/, or projects/ directories. Use when creating bundles, modifying IaC, testing deployments, validating upgrades, or fixing compliance findings.
+description: Develop and test Massdriver infrastructure bundles. Operates in four modes - FULL (interactive deploy loop via /massdriver:develop), UPGRADE TESTING (day 2 validation via /massdriver:test-upgrade), BUILD-ONLY (/massdriver:gen for local scaffolding), or IMPORT (adopting existing cloud resources via /massdriver:import). Auto-activates when working with massdriver.yaml, bundles/, resource-type/, platforms/, or projects/ directories. Use when creating bundles, modifying IaC, testing deployments, validating upgrades, importing existing cloud resources, or fixing compliance findings.
 ---
 
 # Massdriver Bundle Development
@@ -18,7 +18,7 @@ Massdriver separates **design time** from **deploy time**:
 - **Link** — a design-time wire from one component's output field to another component's input field. Becomes a connection at deploy time.
 - **Environment** — a deployment context (e.g. `prod`, `staging`, `agentx7k2`). Environments materialize the blueprint into instances.
 - **Instance** — a deployed component in a specific environment. Slug is `<project>-<env>-<component>` (e.g. `ecomm-prod-db`).
-- **Resource** — the runtime output of an instance, conforming to a **resource type** (the schema contract). Bundles author "artifacts" in `massdriver.yaml`; those become resources at deploy time.
+- **Resource** — the runtime output of an instance, conforming to a **resource type** (the schema contract). Bundles declare the resources they publish under `resources:` in `massdriver.yaml`.
 
 Components are added exactly once, at the project level (`add_component`) — never per environment. Every environment automatically gets an instance for every component.
 
@@ -29,19 +29,21 @@ Components are added exactly once, at the project level (`add_component`) — ne
 | **Full Development** | `/massdriver:develop <use-case>` | Creating/updating bundles with full test loop |
 | **Upgrade Testing** | `/massdriver:test-upgrade <bundle>` | Validating version upgrades against prod config |
 | **Quick Generation** | `/massdriver:gen <use-case>` | Scaffolding a bundle without deploy loop |
+| **Resource Import** | `/massdriver:import <resource>` | Adopting existing cloud infra (new bundle, existing bundle, or resource-only) |
 
 ## Reference Files
 
-- [PATTERNS.md](./PATTERNS.md) - Complete bundle and artifact examples
+- [PATTERNS.md](./PATTERNS.md) - Complete bundle and resource examples
 - [references/graphql.md](./references/graphql.md) - GraphQL multi-entity queries
 - [references/alarms.md](./references/alarms.md) - Adding monitoring alarms (AWS/GCP/Azure)
 - [references/compliance.md](./references/compliance.md) - Post-deployment Checkov remediation
+- [references/import.md](./references/import.md) - Importing existing cloud resources (new bundle / existing bundle / resource-only)
 - [snippets/](./snippets/) - Copy-paste templates
 
 ## Safety Rules
 
 1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
-2. **NEVER** configure or deploy to production environments
+2. **NEVER** provision or decommission production, and never change a production instance that is already deployed. Plans are fine anywhere. The one exception is an import: configuring an undeployed production instance, where the safety hook asks the user to approve each call.
 3. **ALWAYS** pass a `message` when creating deployments (`create_deployment`, `propose_deployment`)
 4. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
 5. **ALWAYS** watch deployment logs after every deploy (`get_deployment_logs` with `follow: true`)
@@ -63,6 +65,8 @@ Do NOT include these fields (they cause linter warnings):
 - Resource types: `mass resource-type publish|get|list`
 - Local dev: `mass server`, `mass schema validate|dereference`, `mass whoami`
 
+**Finding bundles and resource types:** to see what exists, regardless of published versions, `list_oci_repos` with `artifact_type: BUNDLE` or `RESOURCE_TYPE` (add `search` to narrow it). Each repo shows its `latestTag`; `get_oci_repo` lists every tag. Then `get_bundle` / `get_resource_type` for one that looks useful. `list_resources` finds *resources*, and its `resource_type` filter matches a specific version — pass `<type>@<version>`, or use `search`.
+
 **UI Only:** first-time credential/secret bootstrapping and visual canvas inspection. Use `get_url` to hand the user a deep link.
 
 **GraphQL:** nothing requires it. Use it only when one query spanning several entities beats a chain of tool calls. See [references/graphql.md](./references/graphql.md).
@@ -76,7 +80,10 @@ Do NOT include these fields (they cause linter warnings):
 ### Credentials/Profile
 
 - **MCP auth**: verify connectivity with `get_viewer` — it returns the authenticated identity. If it fails, stop, report the exact error, and ask the user to fix their MCP setup.
-- **CLI profile** (needed for publish/build steps): ask which profile to use. Default profile needs no action; for an alternate profile set `export MASSDRIVER_PROFILE=<name>` before every `mass` command.
+- **CLI auth**: run `mass whoami` and **compare it to `get_viewer`**. They are two independent credential paths and can silently disagree — the MCP server's profile is fixed at launch, while the CLI resolves a profile per command. If the organizations differ, STOP and tell the user: you would publish a bundle to one org and wire it up in another.
+- **CLI profile** (needed for publish/build steps): ask which profile to use. The default profile needs no action. For an alternate profile, prefix each command — `MASSDRIVER_PROFILE=<name> mass bundle build`. Do **not** run `export MASSDRIVER_PROFILE=<name>` as its own step: each Bash call is a fresh shell and the export is gone by the next call.
+- **Do not use the `--profile` flag.** It is a global flag; the safety hook reads the subcommand positionally, and while it now skips known global flags, the env-var prefix is the form the guards are built around. Prefer it.
+- Changing the profile does **not** re-point the MCP server. If the user needs the control plane on a different organization, they must exit Claude Code, export `MASSDRIVER_PROFILE` (or `MASSDRIVER_API_KEY` + `MASSDRIVER_ORGANIZATION_ID`), and start a new session. There is no way to change it mid-session.
 
 ### Project & Environment
 
@@ -91,7 +98,7 @@ You'll likely need both a **project** and an **environment** before deploying an
 - Project slug, env suffix, component id: max 20 chars, lowercase alphanumeric only.
 - Instance slug = `<project>-<env>-<component>` (e.g. `ecomm-prod-db`).
 - `create_environment` takes the project via `project_id` and just the env suffix as `id`; every other tool takes the FULL `<project>-<env>` environment identifier.
-- Resource slug = `<project>-<env>-<component>.<artifact-field>` (e.g. `ecomm-prod-db.database`).
+- Resource slug = `<project>-<env>-<component>.<resource-field>` (e.g. `ecomm-prod-db.database`).
 
 ### Error Recovery
 
@@ -106,7 +113,7 @@ If you encounter ANY auth, credential, CLI, or MCP connectivity issue: **stop an
 **Use when:** Testing bundles end-to-end, validating compliance, iterating on real infrastructure.
 
 Workflow:
-1. **Setup**: Verify MCP auth (`get_viewer`), ask for CLI profile, project, environment
+1. **Setup**: Verify MCP auth (`get_viewer`), cross-check CLI auth (`mass whoami` — same org?), ask for CLI profile, project, environment
 2. **Requirements**: Gather design intent interactively
 3. **Scaffold**: Generate bundle code
 4. **Publish** (CLI): `mass bundle publish --development` (and `mass resource-type publish` for any new resource types)
@@ -141,6 +148,22 @@ Workflow:
 3. `mass bundle build && tofu validate`
 4. Hand off to user
 
+### Import Mode
+**Command:** `/massdriver:import`
+**Use when:** Adopting cloud resources that already exist — created by hand, by another IaC tool,
+or in another account.
+
+Three paths, chosen up front: author a **new bundle**, reuse an **existing bundle**, or
+**register the resource only** as an imported resource with no IaC. The two bundle paths adopt
+state with the imperative `tofu import` command against the instance's managed state — never
+`import {}` blocks, which would hardcode one cloud resource ID into source shared by every
+instance. Import runs locally; the plan runs in the provisioner via `create_deployment` with
+`action: PLAN`. **Import never provisions any instance** — the resources already exist, and a
+deploy before the plan is clean can destroy or duplicate them. For the same reason it pins exact
+releases, never a `+dev` channel: a channel deploys on every publish. The channel advice
+elsewhere in this skill is for bundle development only. See
+[references/import.md](./references/import.md).
+
 ---
 
 ## Full Mode Workflow
@@ -157,7 +180,7 @@ Before writing code, gather these inputs through conversation:
 **2. Resource Scoping**
 Based on the use case, suggest appropriate cloud resources:
 - Check existing bundles: `list_oci_repos` with `artifact_type: BUNDLE` (MCP)
-- Check existing resource types: `mass resource-type list` (CLI)
+- Check existing resource types: `list_oci_repos` with `artifact_type: RESOURCE_TYPE` (MCP)
 - Propose resources that fit the lifecycle tier (foundational/stateful/compute)
 
 **3. Preset Design**
@@ -181,9 +204,9 @@ Understand compliance requirements:
 - Any checks to hardcode vs make user-configurable?
 - Note: Full findings emerge during deployment - iterate as they appear
 
-**5. Connections & Artifacts**
+**5. Dependencies & Resources**
 - What does this bundle need? What does it produce?
-- Run `mass resource-type list` (CLI) to see available resource type definitions
+- Find available resource types with `list_oci_repos` (`artifact_type: RESOURCE_TYPE`), then `get_resource_type`
 - **Resource types and Terraform providers are 1:1** — always base provider config on the credential resource type's schema
 
 ### Phase 2: Bundle Development
@@ -196,7 +219,7 @@ Understand compliance requirements:
    ```
 
 2. **Check/create resource types:**
-   - Run `mass resource-type list` to see existing resource types
+   - Find existing resource types: `list_oci_repos` with `artifact_type: RESOURCE_TYPE`
    - If the bundle needs a new resource type, create `resource-type/<name>/massdriver.yaml` (or `platforms/<name>/massdriver.yaml` for credential types — purely organizational)
    - **Publish immediately** (with user approval):
      ```bash
@@ -205,7 +228,7 @@ Understand compliance requirements:
    - Resource types go live immediately — there is NO `--development` flag.
    - **Warning:** Published resource types are live immediately — avoid breaking changes.
 
-3. **Create massdriver.yaml** with params, connections, artifacts, UI ordering. Naming note: the bundle YAML section key is `artifacts:`, but what those publish (via `massdriver_resource` HCL resources) surface at deploy time as runtime "resources".
+3. **Create massdriver.yaml** with `params`, `dependencies:` (inputs), `resources:` (outputs, published via `massdriver_resource`), and UI ordering. Existing bundles may still use `connections:`/`artifacts:` for these sections; `mass bundle lint` warns about them.
 
 4. **Create Terraform code** — fetch the credential resource type FIRST:
    ```bash
@@ -288,7 +311,7 @@ For local development without deployments:
 # 1. Create/edit bundle files
 cd bundles/my-bundle
 
-# 2. Build schemas
+# 2. Generate src/_massdriver_variables.tf
 mass bundle build
 
 # 3. Validate IaC
@@ -320,7 +343,7 @@ mass server -p 8080 --browser
 
 **Resource**: An instance of a resource type containing actual data (credentials, connection strings). Created by bundles via the `massdriver_resource` Terraform resource, or by users (UI form / `create_resource` MCP tool).
 
-**Connection**: How instances receive resources at deploy time. Authored in `massdriver.yaml`, wired in the project blueprint via `link_components`, materialized as a connection in each environment, flows to Terraform as a variable at deploy. Overridable per instance with `set_remote_reference` (bind a slot to a resource from another project or an imported resource).
+**Connection**: How instances receive resources at deploy time. Declared under `dependencies:` in `massdriver.yaml`, wired in the project blueprint via `link_components`, materialized as a connection in each environment, flows to Terraform as a variable at deploy. Overridable per instance with `set_remote_reference` (bind a slot to a resource from another project or an imported resource).
 
 **Component**: A slot in a project's blueprint backed by a bundle. Added once via `add_component`. Every environment auto-instantiates every component.
 
@@ -398,39 +421,39 @@ Massdriver validates `massdriver.yaml` against:
 ## Critical Rules
 
 ### 1. NEVER Edit Generated Files
-Auto-generated by `mass bundle build` - changes will be overwritten:
-- `schema-*.json`
-- `_massdriver_variables.tf`
+`mass bundle build` writes `_massdriver_variables.tf` into each step's directory: one Terraform variable per param and dependency, plus `md_metadata`. Changes are overwritten on the next build.
 
 ### 2. Namespace Collision Warning
-Params and connections share Terraform variable namespace:
+Params and dependencies share Terraform variable namespace:
 ```yaml
 # BAD - Both create var.network
 params:
   properties:
     network:
-connections:
-  properties:
-    network:
+dependencies:
+  network:
 ```
 
-### 3. Artifact $ref Must Match Resource Type Name
+### 3. `resource_type` Is a Name Plus a Version Constraint
 ```yaml
-connections:
-  properties:
-    network:
-      $ref: network  # References resource-type/network/
+dependencies:
+  network:
+    resource_type: network@~1  # Name as `mass resource-type list` shows it, constrained to its current major
+    required: true
 ```
+Never leave the version off — that means `latest`, and a breaking resource type release breaks the
+bundle. Exact versions are fragile. See "Resource Type Versions" in [PATTERNS.md](./PATTERNS.md).
 
-### 4. artifacts.tf Must Match massdriver.yaml
+### 4. resources.tf Must Match massdriver.yaml
 ```yaml
 # massdriver.yaml
-artifacts:
-  properties:
-    database:  # <-- field name
+resources:
+  database:  # <-- field name
+    resource_type: postgres@~2
+    required: true
 ```
 ```hcl
-# src/artifacts.tf
+# src/resources.tf
 resource "massdriver_resource" "database" {
   field = "database"  # Must match
 }
@@ -460,20 +483,25 @@ Use provider-native attributes instead. Example: SES SMTP passwords come from
 ### 7. Resource Types and Providers Are 1:1
 Always `mass resource-type get <platform-name>` before writing a provider block. The provider must use ONLY the fields from the credential resource type's schema.
 
+### 8. Replace-Forcing Params Are Immutable
+If changing an argument makes the provider destroy and recreate the resource (`ForceNew` in the provider's schema; "forces replacement" in a plan), every param that feeds it gets `$md.immutable: true`. Otherwise a routine edit in the UI becomes a delete.
+
+### 9. Prefer Independent Resources Over Inline Blocks
+When a provider can express a child object either as a nested block on its parent or as its own resource, use the independent resource and never both for the same object — the two fight over it and the plan never settles. Independent resources can be added, removed and imported one at a time.
+
 ---
 
 ## File Responsibilities
 
 | File | Purpose | Editable? |
 |------|---------|-----------|
-| `massdriver.yaml` | Source of truth - params, connections, artifacts, UI | Yes |
+| `massdriver.yaml` | Source of truth - params, dependencies, resources, UI | Yes |
 | `README.md` | Bundle documentation (displayed in UI) | Yes |
 | `src/main.tf` | IaC code | Yes |
-| `src/artifacts.tf` | massdriver_resource resources | Yes |
+| `src/resources.tf` | massdriver_resource resources | Yes |
 | `src/.checkov.yml` | Checkov skip rules | Yes |
 | `operator.md` | Runbook with mustache templating | Yes |
-| `schema-*.json` | Generated schemas | **Never** |
-| `_massdriver_variables.tf` | Generated variables | **Never** |
+| `src/_massdriver_variables.tf` | Generated variables | **Never** |
 
 ---
 
@@ -517,7 +545,19 @@ provider "aws" {
 }
 ```
 
-### Accessing Connection Data
+Azure takes the service principal fields directly:
+
+```hcl
+provider "azurerm" {
+  features {}
+  client_id       = var.azure_service_principal.client_id
+  client_secret   = var.azure_service_principal.client_secret
+  subscription_id = var.azure_service_principal.subscription_id
+  tenant_id       = var.azure_service_principal.tenant_id
+}
+```
+
+### Accessing Dependency Data
 
 ```hcl
 var.network.id
@@ -525,7 +565,7 @@ var.database.auth.hostname
 [for s in var.network.subnets : s.id if s.type == "private"]
 ```
 
-### Creating Artifacts
+### Publishing Resources
 
 ```hcl
 resource "massdriver_resource" "database" {
@@ -576,17 +616,16 @@ params:
         value: .name
 ```
 
-### Optional Connections
+### Optional Dependencies
 
 ```yaml
-connections:
-  required:
-    - network  # Required
-  properties:
-    network:
-      $ref: network
-    bucket:
-      $ref: bucket  # Optional - not in required
+dependencies:
+  network:
+    resource_type: network@~1
+    required: true
+  bucket:
+    resource_type: bucket@~0
+    required: false  # var.bucket defaults to null
 ```
 
 ```hcl
@@ -652,10 +691,10 @@ A skipped check is skipped EVERYWHERE — `halt_on_failure` does NOTHING for ski
 Before publishing:
 - [ ] `mass bundle build` succeeds
 - [ ] `mass bundle lint` is clean (or run `mass bundle publish --development --fail-warnings`)
-- [ ] No param/connection name conflicts
-- [ ] Every artifact has matching `massdriver_resource` resource
+- [ ] No param/dependency name conflicts
+- [ ] Every `resources:` entry has a matching `massdriver_resource` resource
 - [ ] `tofu init && tofu validate` passes
-- [ ] Artifact JSON matches the resource type's schema
+- [ ] Resource JSON matches the resource type's schema
 - [ ] Required providers include `massdriver-cloud/massdriver`
 - [ ] Provider block based on `mass resource-type get <platform>` output (not guessed)
 
@@ -665,14 +704,14 @@ Before publishing:
 
 | Mistake | Fix |
 |---------|-----|
-| Coupled lifecycles (VPC in database bundle) | Use connections for foundational resources |
+| Coupled lifecycles (VPC in database bundle) | Use dependencies for foundational resources |
 | Provider auth fails | `mass resource-type get <platform>` first, use ALL fields, `try()` for optional |
 | "variable not declared" | Run `mass bundle build` |
-| Param/connection name collision | Rename one |
-| artifacts.tf field mismatch | Ensure `field = "X"` matches `artifacts.properties.X` |
+| Param/dependency name collision | Rename one |
+| resources.tf field mismatch | Ensure `field = "X"` matches `resources.X` |
 | Publishing stable during development | Use `--development` flag always until production-ready |
 | Forgot to publish after code change | Platform can't read local files — always publish |
-| Instance not picking up new release after publish | Pin the development channel: `update_instance` with version `latest+dev` |
+| Instance not picking up new release after publish | Bundle development: pin the development channel, `update_instance` with version `latest+dev`. Import: re-pin the exact release instead |
 | Assumed a release-channel flag or enum | Channels ride the version constraint: `latest+dev` / `~1+dev` for development, `latest` / `~1` for stable |
 | Tried `mass pkg create` / `mass component add` for deploys | `add_component` (MCP) once at the project level |
 | Tried `mass pkg cfg` to set params | Params travel with each `create_deployment` call |
@@ -696,6 +735,8 @@ Before publishing:
 
 **After ANY change, you MUST publish.** The platform has no access to your local filesystem — changes don't exist until you publish.
 
+Each bundle and resource type publishes to its own OCI repository (`create_oci_repo`, `artifact_type: BUNDLE` or `RESOURCE_TYPE`); publishing fails until it exists. A resource type also needs `version:` in its `massdriver.yaml`. Bundles and resource types share one repository namespace — a bundle can't take a name a resource type already has, or the reverse — so check `list_oci_repos` before settling on either name.
+
 After publishing a new bundle release, instances on the `development` release channel auto-resolve to it. To force a redeploy of the new release without changing config, call `create_deployment` with `action: PROVISION`, no `params`, and a message like `"Pick up new release"`.
 
 ---
@@ -708,7 +749,7 @@ mass resource-type list
 mass resource-type get <name>            # ALWAYS do before writing providers
 
 # Build / Lint / Local
-mass bundle build                        # Generate schemas + variables
+mass bundle build                        # Generate _massdriver_variables.tf per step
 mass bundle lint                         # Check massdriver.yaml for errors
 mass bundle new -n my-bundle -t opentofu # Scaffold from a template
 mass bundle pull <name>                  # Pull a published bundle to disk
@@ -734,4 +775,5 @@ mass version
 - [references/graphql.md](./references/graphql.md) - GraphQL multi-entity queries
 - [references/alarms.md](./references/alarms.md) - Monitoring alarms
 - [references/compliance.md](./references/compliance.md) - Checkov remediation
+- [references/import.md](./references/import.md) - Importing existing cloud resources
 - [snippets/](./snippets/) - Copy-paste templates

@@ -10,7 +10,7 @@ allowed-tools:
 
 # Architect — App Idea → Governed Infrastructure
 
-> **Placeholder / demo command.** Citizen engineers — non-infra folks vibe-coding an app with an
+> **Placeholder / demo command.** Citizen developers — non-infra folks vibe-coding an app with an
 > LLM — shouldn't end up with an unreviewed pile of infrastructure on a laptop. This command
 > routes that work through Massdriver's self-service portal instead: it lands in the org's cloud
 > account, on secure/compliant/**correct** bundles, inside a visual, audit-filled environment
@@ -23,7 +23,7 @@ from dev up through production.
 ## What This Does
 
 1. **Setup** — asks which environment and which credentials/profile to work in.
-2. **Understand the use case** — what the citizen engineer is actually trying to ship.
+2. **Understand the use case** — what the citizen developer is actually trying to ship.
 3. **Recommend a project layout** — one project vs. sharded projects, environment defaults,
    and remote references for shared/cross-project resources.
 4. **Recommend bundles** — reuse existing org bundles where they fit; identify where a
@@ -32,9 +32,9 @@ from dev up through production.
    exactly what to request from their DevOps team, and keeps building the rest.
 5. **Pick a runtime** — examines the use case against the org's available bundles,
    environments, and standards, then picks the best runtime and proceeds. It states its
-   reasoning; it doesn't make the citizen engineer choose. See below.
+   reasoning; it doesn't make the citizen developer choose. See below.
 6. **Build + publish the app bundle directly to the platform** (`--development`) so the
-   citizen engineer never needs a git remote or a PR to get moving. Source is committed to a
+   citizen developer never needs a git remote or a PR to get moving. Source is committed to a
    **local** git repo automatically; a remote is opt-in (the agent asks if one already exists).
 7. **Progress through environments** — dev → staging → prod, gated by the user's permissions.
 

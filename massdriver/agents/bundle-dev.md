@@ -180,15 +180,15 @@ Based on requirements, create:
 
 2. **massdriver.yaml** with:
    - Params with presets (`examples`)
-   - Connections (dependencies)
-   - Resources (outputs — still called `artifacts:` in YAML even though they're "resources" at runtime)
+   - `dependencies:` (inputs)
+   - `resources:` (outputs)
    - UI ordering
    - Steps config with `halt_on_failure` expression
 
 3. **Terraform code** in `src/`:
    - Provider configuration (see **Provider Configuration** below)
    - Resource definitions
-   - `massdriver_resource` HCL resources matching the YAML's `artifacts:` schema
+   - `massdriver_resource` HCL resources, one per `resources:` entry
    - **SaaS provisioner constraints (HARD)**: no `null_resource`, no `data "external"`, no
      shelling out to `python3` or other binaries — the platform's provisioner cannot run local
      code. Use provider-native attributes (e.g. SES SMTP passwords come from

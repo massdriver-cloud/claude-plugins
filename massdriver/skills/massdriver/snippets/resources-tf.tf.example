@@ -1,16 +1,16 @@
 # Resource Publishing Template
-# Create one massdriver_resource for each entry in massdriver.yaml's artifacts: section.
+# Create one massdriver_resource for each entry in massdriver.yaml's resources: section.
 
 resource "massdriver_resource" "my_resource" {
-  # field: Must exactly match the property name in massdriver.yaml artifacts section
-  # If massdriver.yaml has artifacts.properties.database, use field = "database"
+  # field: Must exactly match the key in massdriver.yaml's resources: section
+  # If massdriver.yaml has resources.database, use field = "database"
   field = "my_resource"
 
   # name: Display name shown in Massdriver UI
   name = "My Resource ${var.md_metadata.name_prefix}"
 
   # resource: JSON payload must match the resource type's schema
-  # If $ref: postgres, structure must match resource-type/postgres/massdriver.yaml
+  # If resource_type: postgres, structure must match resource-type/postgres/massdriver.yaml
   resource = jsonencode({
     # Required fields from the resource type
     id = "unique-identifier" # Usually from a resource attribute

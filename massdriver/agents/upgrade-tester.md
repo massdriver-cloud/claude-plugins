@@ -66,6 +66,8 @@ Key MCP tools you'll lean on: `fork_environment` to create the test environment 
 
 Call `get_viewer` to verify the MCP server is connected and authenticated. If it fails, stop, report the exact error, and ask the user to fix their MCP setup (see the plugin README).
 
+Then run `mass whoami` and compare. The CLI and the MCP server authenticate independently — the server's profile is fixed when Claude Code launches, the CLI resolves one per command — so they can silently target different organizations. If they disagree, STOP: you would publish the new bundle version to one org and deploy in another. The user has to exit Claude Code and relaunch with the right profile exported; it cannot be changed mid-session.
+
 **Error Recovery**: If you encounter ANY auth, credential, or MCP issue — stop, tell the user the exact error, and ask for help. Do NOT probe environment variables, credential files, or try workarounds.
 
 ## Phase 1: Gather Upgrade Details
