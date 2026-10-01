@@ -154,7 +154,7 @@ This plugin helps platform engineers create and test Massdriver bundles — reus
 - **Interactive development**: Full deploy loop with compliance remediation
 - **Brownfield import**: Adopt cloud resources that already exist into bundles, or register them so other components can connect to them
 - **Upgrade testing**: Validate version upgrades against a faithful copy of your production config before rolling them out
-- **Safety guardrails**: Blocks non-development publishes and production-targeting writes — across BOTH `mass` CLI commands and MCP tool calls, including automated deployment approval
+- **Safety guardrails**: Blocks non-development publishes, production deploys and teardown, and automated deployment approval, and asks before any production configuration change — across BOTH `mass` CLI commands and MCP tool calls
 - **Compliance automation**: Iterates until Checkov findings are resolved
 - **GraphQL reference**: Multi-entity queries for when one query beats a chain of tool calls
 
@@ -212,8 +212,10 @@ claude-plugins/
 The plugin includes a deterministic safety hook (`scripts/massdriver-safety-check.sh`, no LLM in the loop) covering **both the CLI and the MCP tools**, which **hard blocks**:
 
 - `mass bundle publish` without the `--development` (`-d`) flag
-- Any CLI command or MCP mutation targeting a production environment: `create_deployment` / `propose_deployment` (`PROVISION` and `DECOMMISSION`), `update_instance`, instance secrets, remote references, `update_environment` / `delete_environment`, environment defaults, and prod-referencing resource mutations. **Plans are exempt** — `PLAN` deployments and `mass instance deploy --plan` are dry-runs and allowed on any environment, including production.
+- Applying to, tearing down or deleting from a production environment, via CLI or MCP: `create_deployment` `PROVISION` / `DECOMMISSION`, `mass instance deploy` / `destroy`, environment deploy / decommission / delete, `orphan_instance`, and deleting production projects or instance resources. **Plans are exempt** — `PLAN` deployments and `mass instance deploy --plan` are dry-runs and allowed on any environment, including production.
 - `approve_deployment` — always, regardless of target. Approving proposed deployments (including rollbacks) is a human authorization step; agents can propose, humans approve in the UI.
+
+Configuration changes against production — `update_instance`, instance secrets, remote references, environment defaults, `update_environment`, resource grants, `copy_instance` into production, and `propose_deployment` — **always ask for your approval**, even in auto mode. They exist for importing into a production instance that isn't deployed yet; agents never change a deployed production instance. `mass config get --show-secrets` also always asks, since it reads your API key.
 
 Read-only MCP tools (`get_*`, `list_*`, `compare_*`, `evaluate_*`, `explain_*`) are auto-approved — no permission prompt, on any environment. `export_resource` still prompts since it returns unmasked secrets. Non-applying tools (`plan_deployment`, `rollback_deployment`, `reject_deployment`, `abort_deployment`) are allowed since they cannot change infrastructure without a human approval.
 

@@ -76,7 +76,9 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
 4. **`tofu import` is not guarded by the safety hook.** The hook inspects `mass` commands and MCP
    calls; a Bash `tofu import` can write to a production instance's state unchallenged. State
    the target instance slug and get explicit user confirmation before importing into anything
-   that looks like production.
+   that looks like production. On production, configure only the undeployed instance you are
+   importing into — every such call prompts the user (Procedure Step 0). Never change a deployed
+   production instance.
 5. **Neither import nor a PLAN mutates cloud infrastructure** — import only writes state, and
    `PLAN` is a dry run (exempt from the hook's production block). The danger is a **PROVISION
    while the plan is dirty**, or with params other than the ones that planned clean. A PLAN

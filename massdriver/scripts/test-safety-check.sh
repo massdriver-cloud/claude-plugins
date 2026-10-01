@@ -53,24 +53,28 @@ check "evaluate_policy"                          allow "$(mcp evaluate_policy '{
 check "export_resource needs the prompt"         pass  "$(mcp export_resource '{"id":"abc"}')"
 
 ### MCP: prod mutations deny ###
-check "update_environment prod"                  deny  "$(mcp update_environment '{"id":"mcptest-prod","description":"x"}')"
 check "delete_environment prod"                  deny  "$(mcp delete_environment '{"id":"mcptest-prod"}')"
 check "deploy_environment prod"                  deny  "$(mcp deploy_environment '{"id":"mcptest-prod"}')"
 check "decommission_environment prod"            deny  "$(mcp decommission_environment '{"id":"mcptest-prod"}')"
 check "create_deployment PROVISION prod"         deny  "$(mcp create_deployment '{"instance_id":"mcptest-prod-demo","action":"PROVISION"}')"
-check "propose_deployment DECOMMISSION prod"     deny  "$(mcp propose_deployment '{"instance_id":"mcptest-prod-demo","action":"DECOMMISSION"}')"
-check "set_instance_secret prod"                 deny  "$(mcp set_instance_secret '{"instance_id":"mcptest-prod-demo","name":"k","value":"v"}')"
-check "update_instance prod"                     deny  "$(mcp update_instance '{"id":"mcptest-prod-demo","version":"latest"}')"
 check "orphan_instance prod"                     deny  "$(mcp orphan_instance '{"instance_id":"mcptest-prod-demo"}')"
-check "copy_instance prod destination"           deny  "$(mcp copy_instance '{"source_id":"mcptest-testa-demo","destination_id":"mcptest-prod-demo"}')"
-check "set_environment_default prod"             deny  "$(mcp set_environment_default '{"environment_id":"mcptest-prod","resource_id":"u"}')"
 check "delete_project prod-matching id"          deny  "$(mcp delete_project '{"id":"prodsvc"}')"
-check "create_environment named prod"            deny  "$(mcp create_environment '{"project_id":"mcptest","id":"prod","name":"Production"}')"
+check "remove_environment_default prod"          ask   "$(mcp remove_environment_default '{"environment_id":"mcptest-prod","resource_type":"x"}')"
+check "update_instance non-prod"                 pass  "$(mcp update_instance '{"id":"mcptest-testa-demo","version":"1.2.3"}')"
+check "deny beats prod-config ask"               deny  "$(bashcmd 'mass env update ecomm-prod -d x && mass bundle publish')"
+check "delete_resource on prod instance"         deny  "$(mcp delete_resource '{"id":"mcptest-prod-demo.bucket"}')"
 check "approve_deployment always"                deny  "$(mcp approve_deployment '{"id":"7f3e0000-0000-0000-0000-000000000000"}')"
-check "update_resource on prod instance"         deny  "$(mcp update_resource '{"id":"mcptest-prod-demo.bucket","name":"x"}')"
-check "create_resource_grant prod resource"      deny  "$(mcp create_resource_grant '{"resource_id":"mcptest-prod-demo.bucket","action":"resource:export"}')"
 
 ### MCP: intended allows / pass-throughs ###
+check "update_environment prod (config)"         ask   "$(mcp update_environment '{"id":"mcptest-prod","description":"x"}')"
+check "propose_deployment prod (needs approval)" ask   "$(mcp propose_deployment '{"instance_id":"mcptest-prod-demo","action":"PROVISION"}')"
+check "set_instance_secret prod (config)"        ask   "$(mcp set_instance_secret '{"instance_id":"mcptest-prod-demo","name":"k","value":"v"}')"
+check "update_instance prod (config)"            ask   "$(mcp update_instance '{"id":"mcptest-prod-demo","version":"1.2.3"}')"
+check "copy_instance prod destination (config)"  ask   "$(mcp copy_instance '{"source_id":"mcptest-testa-demo","destination_id":"mcptest-prod-demo"}')"
+check "set_environment_default prod (config)"    ask   "$(mcp set_environment_default '{"environment_id":"mcptest-prod","resource_id":"u"}')"
+check "create_environment named prod"            deny  "$(mcp create_environment '{"project_id":"mcptest","id":"prod","name":"Production"}')"
+check "update_resource on prod instance (config)" ask  "$(mcp update_resource '{"id":"mcptest-prod-demo.bucket","name":"x"}')"
+check "create_resource_grant prod (config)"      ask   "$(mcp create_resource_grant '{"resource_id":"mcptest-prod-demo.bucket","action":"resource:export"}')"
 check "create_deployment PLAN on prod"           pass  "$(mcp create_deployment '{"instance_id":"mcptest-prod-demo","action":"PLAN"}')"
 check "copy_instance FROM prod source"           pass  "$(mcp copy_instance '{"source_id":"mcptest-prod-demo","destination_id":"mcptest-testa-demo"}')"
 check "fork_environment from prod parent"        pass  "$(mcp fork_environment '{"parent_id":"mcptest-prod","id":"agentx7","name":"Fork"}')"
@@ -87,7 +91,7 @@ check "create_group (out of scope)"              pass  "$(mcp create_group '{"na
 
 ### MCP: segment extraction (judge bugs from 2026-07-30 session) ###
 check "component named prodcache, env testa"     pass  "$(mcp set_instance_secret '{"instance_id":"mcptest-testa-prodcache","name":"k","value":"v"}')"
-check "env preprod blocked (substring)"          deny  "$(mcp update_environment '{"id":"mcptest-preprod","description":"x"}')"
+check "env preprod blocked (substring)"          deny  "$(mcp delete_environment '{"id":"mcptest-preprod"}')"
 check "project named prodsvc, env testa"         pass  "$(mcp update_environment '{"id":"prodsvc-testa","description":"x"}')"
 
 ### Bash: mass CLI ###
@@ -99,8 +103,10 @@ check "instance deploy prod"                     deny  "$(bashcmd 'mass instance
 check "instance deploy prod --plan"              pass  "$(bashcmd 'mass instance deploy ecomm-prod-db --plan -m msg')"
 check "instance destroy prod (alias pkg)"        deny  "$(bashcmd 'mass pkg destroy ecomm-prod-db --force')"
 check "instance deploy test env"                 pass  "$(bashcmd 'mass instance deploy ecomm-agentx7k2-db -m msg')"
-check "env update prod (alias env)"              deny  "$(bashcmd 'mass env update ecomm-prod -d desc')"
-check "environment default prod"                 deny  "$(bashcmd 'mass environment default ecomm-prod res-id')"
+check "env delete prod (alias env)"              deny  "$(bashcmd 'mass env delete ecomm-prod')"
+check "env update prod (config)"                 ask   "$(bashcmd 'mass env update ecomm-prod -d desc')"
+check "environment default prod (config)"        ask   "$(bashcmd 'mass environment default ecomm-prod res-id')"
+check "instance version pin prod (config)"       ask   "$(bashcmd 'mass instance version ecomm-prod-db@1.2.3')"
 check "project delete prod-matching"             deny  "$(bashcmd 'mass project delete prodsvc')"
 check "read-only mass commands"                  pass  "$(bashcmd 'mass instance get ecomm-prod-db')"
 check "non-mass command untouched"               pass  "$(bashcmd 'tofu plan -out tf.plan')"
@@ -111,7 +117,7 @@ check "env-var prefixed mass cmd"                deny  "$(bashcmd 'MASSDRIVER_PR
 check "global --profile before publish"          deny  "$(bashcmd 'mass --profile staging bundle publish')"
 check "global --profile=v before publish"        deny  "$(bashcmd 'mass --profile=staging bundle publish')"
 check "global --profile before prod deploy"      deny  "$(bashcmd 'mass --profile staging instance deploy ecomm-prod-db -m msg')"
-check "global --profile before prod env update"  deny  "$(bashcmd 'mass --profile staging env update ecomm-prod -d x')"
+check "global --profile before prod env delete"  deny  "$(bashcmd 'mass --profile staging env delete ecomm-prod')"
 check "global --profile before prod proj delete" deny  "$(bashcmd 'mass --profile staging project delete prodsvc')"
 check "profile named like a subcommand"          deny  "$(bashcmd 'mass --profile bundle instance deploy ecomm-prod-db -m msg')"
 check "global --profile + --development ok"      pass  "$(bashcmd 'mass --profile staging bundle publish --development')"
@@ -136,8 +142,8 @@ cat > "$WORKDIR/.claude/massdriver.local.md" <<'EOF'
 production_pattern: (live|prd)
 ---
 EOF
-check "custom: live blocked"                     deny  "$(mcp update_environment '{"id":"mcptest-live","description":"x"}')"
-check "custom: prod now allowed"                 pass  "$(mcp update_environment '{"id":"mcptest-prod","description":"x"}')"
+check "custom: live blocked"                     deny  "$(mcp delete_environment '{"id":"mcptest-live"}')"
+check "custom: prod now allowed"                 pass  "$(mcp delete_environment '{"id":"mcptest-prod"}')"
 check "custom: prd instance deploy blocked"      deny  "$(bashcmd 'mass instance deploy shop-prd-db -m msg')"
 rm -rf "$WORKDIR/.claude"
 

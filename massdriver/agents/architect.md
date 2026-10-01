@@ -296,8 +296,9 @@ Promote the app up the environment ladder **only as far as the user's permission
 2. **Watch logs + compliance** — get deploys green first, then remediate Checkov findings before
    promoting.
 3. **Promote to staging, then prod** — check `production_pattern` in
-   `.claude/massdriver.local.md` first. Production-targeting mutations are hook-blocked for you
-   by design: use `propose_deployment` so a human reviews and approves in the UI. Never attempt
+   `.claude/massdriver.local.md` first. Production deploys are hook-blocked for you by design:
+   use `propose_deployment` (the hook asks the user to confirm it) so a human reviews and approves
+   in the UI. Never attempt
    to approve; never push into an environment the user can't authorize.
 
 Present promotion as a gated path, not an automatic march to prod.

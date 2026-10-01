@@ -14,8 +14,9 @@
 mass_profile: ""
 
 # Regex pattern to identify production environments
-# The plugin will BLOCK any CLI commands OR MCP tool calls targeting
-# environments matching this pattern.
+# In environments matching this pattern the plugin BLOCKS provisioning,
+# decommissioning and deletion (CLI and MCP), and makes every configuration
+# change or proposal prompt for your approval. Plans are always allowed.
 #
 # The pattern is substring-matched against the ENVIRONMENT SEGMENT of a
 # slug only — never the whole slug and never free-text fields:

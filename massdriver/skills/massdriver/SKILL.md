@@ -43,7 +43,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 ## Safety Rules
 
 1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
-2. **NEVER** provision or decommission production. Configuring production and running plans against it are fine.
+2. **NEVER** provision or decommission production, and never change a production instance that is already deployed. Plans are fine anywhere. The one exception is an import: configuring an undeployed production instance, where the safety hook asks the user to approve each call.
 3. **ALWAYS** pass a `message` when creating deployments (`create_deployment`, `propose_deployment`)
 4. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
 5. **ALWAYS** watch deployment logs after every deploy (`get_deployment_logs` with `follow: true`)

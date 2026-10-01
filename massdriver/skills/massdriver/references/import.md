@@ -159,6 +159,12 @@ importing into any instance whose environment segment looks like production, sta
 instance slug and get explicit user confirmation. Writing state is not a cloud mutation, but a
 wrong-instance import is a mess to unwind.
 
+Importing into production is supported only while the instance is **undeployed** — Path B never
+imports into a provisioned instance without the user's explicit say-so. The hook can't see
+instance status, so on production every configuration call (pinning, secrets, references,
+defaults, grants) and the final proposal prompts the user, even in auto mode. Say which instance
+and why before each one. Provisioning and decommissioning production stay blocked.
+
 ### Step 1: Confirm the bundle is on Massdriver-managed state
 
 Look at the bundle's `src/` for a `terraform { backend ... }` block:
@@ -359,10 +365,6 @@ carries the import params to the platform; nothing else does. Then `plan_deploym
 proposal's id and confirm it is the same clean plan. Tell the user to review that plan and
 approve or reject the proposal in the UI — and **not to Deploy from the instance form**, which
 still holds the defaults until the proposal is approved. Never approve it yourself.
-
-If the hook blocks the proposal (production environments), don't work around it. Give the user
-the import params and a `get_url` deep link, say that a form Deploy with the defaults would
-act on the imported resource, and stop.
 
 **Then check what this import made obsolete.** `list_resources` with `origin: IMPORTED` and the
 bundle's output type at its version — imported resources belong to the organization, not an

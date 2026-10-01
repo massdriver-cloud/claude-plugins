@@ -14,7 +14,14 @@
 #               settings allowlist) decides.
 #
 # Policy (mirrors templates/massdriver.local.md):
-#   * Mutations targeting a production-matching environment are denied.
+#   * Production is never applied to, torn down or deleted from:
+#     PROVISION/DECOMMISSION deployments, environment deploy/decommission/
+#     delete, orphaning, and deleting production projects or instance
+#     resources are denied.
+#   * Configuring production is legitimate only for an instance that isn't
+#     deployed yet (an import). The hook can't see instance status, so every
+#     production configuration call and proposal forces the user prompt
+#     ("ask"), even in auto mode. Plans stay allowed.
 #   * The production pattern is read from .claude/massdriver.local.md
 #     (production_pattern: <regex>) relative to the session cwd, defaulting
 #     to (prod|production).
@@ -154,6 +161,8 @@ deny() { emit deny "$1"; }
 allow() { emit allow "$1"; }
 ask() { emit ask "$1"; }
 
+PROD_CONFIG_REASON="Production target. Agents may configure production only for an instance that is not deployed yet (an import). Approve only if that is what this is."
+
 # `mass config get ... --show-secrets` within one simple command. Matched on
 # raw text, not tokens, so it is still found inside `VAR="$(mass ...)"`.
 SHOW_SECRETS_RE='(^|[[:space:]("`=])mass[[:space:]]([^;&|]*[[:space:]])?config[[:space:]]+get[[:space:]]([^;&|]*[[:space:]])?--show-secrets([[:space:]=)"`]|$)'
@@ -175,38 +184,63 @@ check_mcp() {
     fork_environment)
       # Reads the parent (even prod) and creates a NEW environment.
       exit 0 ;;
-    create_deployment|propose_deployment)
-      action="$(json_get action)"
-      [ "$action" = "PLAN" ] && exit 0 # dry-run; safe on any environment
+    propose_deployment)
       slug="$(json_get instance_id)"
       if slug_is_prod "$slug" 3; then
-        deny "$slug targets a production environment (pattern: $PATTERN). Use a non-production environment, or action: PLAN for a dry-run."
+        ask "$PROD_CONFIG_REASON"
       fi ;;
     update_instance)
       slug="$(json_get id)"
       if slug_is_prod "$slug" 3; then
-        deny "$slug targets a production environment (pattern: $PATTERN); refusing to mutate a production instance."
+        ask "$PROD_CONFIG_REASON"
       fi ;;
-    set_instance_secret|remove_instance_secret|set_remote_reference|remove_remote_reference|orphan_instance)
+    set_instance_secret|remove_instance_secret|set_remote_reference|remove_remote_reference)
       slug="$(json_get instance_id)"
       if slug_is_prod "$slug" 3; then
-        deny "$slug targets a production environment (pattern: $PATTERN); refusing to mutate a production instance."
+        ask "$PROD_CONFIG_REASON"
       fi ;;
     copy_instance)
       # A production source is a read and is fine; only the destination is a write.
       slug="$(json_get destination_id)"
       if slug_is_prod "$slug" 3; then
-        deny "Destination $slug targets a production environment (pattern: $PATTERN); refusing to overwrite its params."
+        ask "$PROD_CONFIG_REASON"
       fi ;;
-    update_environment|delete_environment|deploy_environment|decommission_environment)
+    update_environment)
       slug="$(json_get id)"
       if slug_is_prod "$slug" 2; then
-        deny "$slug matches the production pattern ($PATTERN); refusing to mutate a production environment."
+        ask "$PROD_CONFIG_REASON"
       fi ;;
-    set_environment_default)
+    set_environment_default|remove_environment_default)
       slug="$(json_get environment_id)"
       if slug_is_prod "$slug" 2; then
-        deny "$slug matches the production pattern ($PATTERN); refusing to mutate a production environment."
+        ask "$PROD_CONFIG_REASON"
+      fi ;;
+    update_resource|create_resource_grant)
+      slug="$(json_get id)"
+      [ -n "$slug" ] || slug="$(json_get resource_id)"
+      case "$slug" in
+        *.*)
+          env="$(env_of "${slug%%.*}" 3)"
+          if matches "$env"; then
+            ask "$PROD_CONFIG_REASON"
+          fi ;;
+      esac ;;
+    create_deployment)
+      action="$(json_get action)"
+      [ "$action" = "PLAN" ] && exit 0 # dry-run; safe on any environment
+      slug="$(json_get instance_id)"
+      if slug_is_prod "$slug" 3; then
+        deny "$slug targets a production environment (pattern: $PATTERN). Plan with action: PLAN, or hand off with propose_deployment for a human to approve."
+      fi ;;
+    orphan_instance)
+      slug="$(json_get instance_id)"
+      if slug_is_prod "$slug" 3; then
+        deny "$slug targets a production environment (pattern: $PATTERN); refusing to orphan a production instance."
+      fi ;;
+    delete_environment|deploy_environment|decommission_environment)
+      slug="$(json_get id)"
+      if slug_is_prod "$slug" 2; then
+        deny "$slug matches the production pattern ($PATTERN); refusing to deploy, decommission or delete a production environment."
       fi ;;
     create_environment)
       slug="$(json_get id)"
@@ -218,22 +252,13 @@ check_mcp() {
       if matches "$slug"; then
         deny "Project id '$slug' matches the production pattern ($PATTERN); refusing to delete a production project."
       fi ;;
-    update_resource|delete_resource)
+    delete_resource)
       slug="$(json_get id)"
       case "$slug" in
         *.*) # "<instance-slug>.<field>" — provisioned by an instance
           env="$(env_of "${slug%%.*}" 3)"
           if matches "$env"; then
-            deny "Resource belongs to a production instance (env '$env' matches $PATTERN); refusing to mutate it."
-          fi ;;
-      esac ;;
-    create_resource_grant)
-      slug="$(json_get resource_id)"
-      case "$slug" in
-        *.*)
-          env="$(env_of "${slug%%.*}" 3)"
-          if matches "$env"; then
-            deny "Resource belongs to a production instance (env '$env' matches $PATTERN); refusing to mutate it."
+            deny "Resource belongs to a production instance (env '$env' matches $PATTERN); refusing to delete it."
           fi ;;
       esac ;;
   esac
@@ -242,9 +267,10 @@ check_mcp() {
   exit 0
 }
 
-# Prints a deny decision for the first guarded segment of $1, or nothing.
+# Prints a decision for the first guarded segment of $1, or nothing.
+# $2 = deny (destructive commands) or ask (production configuration).
 scan_segments() {
-  local seg action slug tok
+  local seg action slug tok mode="$2"
 
   # Split compound commands into simple segments, one per line.
   printf '%s\n' "$1" | awk '{ gsub(/&&|\|\||;|\|/, "\n"); print }' | while IFS= read -r seg; do
@@ -275,6 +301,7 @@ scan_segments() {
 
     case "$2" in
       bundle)
+        [ "$mode" = deny ] || continue
         if [ "${3:-}" = "publish" ]; then
           shift 3
           local dev=""
@@ -288,7 +315,8 @@ scan_segments() {
       instance|inst|package|pkg)
         action="${3:-}"
         case "$action" in
-          deploy|destroy|version)
+          deploy|destroy)
+            [ "$mode" = deny ] || continue
             case " $seg " in *" --plan "*)
               [ "$action" = "deploy" ] && continue ;; # dry-run; safe anywhere
             esac
@@ -300,21 +328,35 @@ scan_segments() {
             if slug_is_prod "$slug" 3; then
               deny "$slug targets a production environment (pattern: $PATTERN). Use a non-production environment."
             fi ;;
+          version)
+            [ "$mode" = ask ] || continue
+            shift 3
+            slug=""
+            for tok in "$@"; do
+              case "$tok" in -*) ;; *) slug="${tok%%@*}"; break ;; esac
+            done
+            if slug_is_prod "$slug" 3; then
+              ask "$PROD_CONFIG_REASON"
+            fi ;;
         esac ;;
       environment|env)
         action="${3:-}"
         case "$action" in
-          update|delete|default)
+          delete|update|default)
             shift 3
             slug=""
             for tok in "$@"; do
               case "$tok" in -*) ;; *) slug="$tok"; break ;; esac
             done
-            if slug_is_prod "$slug" 2; then
-              deny "$slug matches the production pattern ($PATTERN); refusing to mutate a production environment."
+            slug_is_prod "$slug" 2 || continue
+            if [ "$action" = delete ] && [ "$mode" = deny ]; then
+              deny "$slug matches the production pattern ($PATTERN); refusing to delete a production environment."
+            elif [ "$action" != delete ] && [ "$mode" = ask ]; then
+              ask "$PROD_CONFIG_REASON"
             fi ;;
         esac ;;
       project)
+        [ "$mode" = deny ] || continue
         if [ "${3:-}" = "delete" ]; then
           shift 3
           slug=""
@@ -338,7 +380,8 @@ check_bash() {
   esac
 
   # Denials win over the ask below.
-  verdict="$(scan_segments "$cmd")"
+  verdict="$(scan_segments "$cmd" deny)"
+  [ -n "$verdict" ] || verdict="$(scan_segments "$cmd" ask)"
   if [ -n "$verdict" ]; then
     printf '%s\n' "$verdict"
     exit 0
