@@ -163,8 +163,10 @@ Set up **only what the chosen path needs**.
 4. **Find the live resource with the user's cloud credential** before creating anything in
    Massdriver. If it doesn't exist, or their credential can't read it, stop and ask — don't
    create a project, environment or bundle for something you can't import. For Paths A/B, also
-   inventory what it references and what references it, and ask every scope question in one
-   round ("Ask once, before anything exists" in the reference).
+   inventory what it references and what references it, check whether the target environment
+   already has a usable Massdriver credential for that cloud, and ask every question — scope,
+   placement, output resource type, credential — in one round ("Ask once, before anything
+   exists" in the reference).
 5. Establish the target project and environment (`get_project` / `get_environment`, or
    `create_project` / `create_environment`). Instance slugs are `<project>-<env>-<component>` —
    never double-prefix. Before creating either, `list_custom_attributes`: the organization may

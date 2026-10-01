@@ -53,8 +53,16 @@ Two questions, cheapest first:
 
 When you find the resource, also inventory what it references and what references it or was
 created alongside it. Sort each into the bundle, a connection, or **left unmanaged** — a valid
-choice when the user doesn't want Massdriver to own or model it, as long as you name it. Put
-every scope question to the user in one round, before creating anything in Massdriver.
+choice when the user doesn't want Massdriver to own or model it, as long as you name it.
+
+A dependency can point either way: something the resource uses, or something that uses it. Either
+way, the objects that join the two — an attachment, a subscription, a policy entry naming the
+other side — share the imported resource's lifecycle. They go in the bundle when the other side
+is a connection, and stay unmanaged when it is.
+
+Put every question to the user in one round, before creating anything in Massdriver: scope, where
+the instance goes, the output resource type, and whether the target environment already has a
+usable credential for the resource's cloud (if not, the user can create one while you work).
 
 ### What to do
 
@@ -202,17 +210,22 @@ resource into the state of the step whose IaC declares it.
 
 **Check the connection slots in the same response**, including the cloud credential. Every
 required slot must be filled before the PLAN, and a new project or environment usually has
-nothing bound. Imported resources or provisioned resources created by an instance in
+nothing bound. `get_instance` lists only the slots that are filled — compare against the
+bundle's declared dependencies, or use `list_environment_unfulfilled_dependencies`. Imported resources or provisioned resources created by an instance in
 another environment can be set as a default for the entire environment (common for credentials)
 with `set_environment_default`, or can be set per-instance with `set_remote_reference`. Using
-an imported resource or a provisioned resource from another environment requires a 
-`resource:export` grant to exist granting permission to the current environment. If a grant
+an imported resource or a provisioned resource from another environment requires a
+`resource:export` grant to exist granting permission to the current environment, before either
+`set_environment_default` or `set_remote_reference` will accept it. If a grant
 doesn't exist, create one (`create_resource_grant`) and scope it with both the `md-project` and
 `md-environment` condition keys to only allow this specific environment. `md-environment` takes
 the environment's own id (`dev`), not the full `<project>-<env>` slug. If unsure whether to use
 environment default or remote reference, ask the user which they prefer.
 
 ### Step 4: Select the http backend locally
+
+Copy the bundle aside first — Step 6 diffs against that copy to prove nothing from the local
+import survives.
 
 `TF_HTTP_*` only applies when the http backend is actually selected. If the bundle has no
 backend block, write a **throwaway** one in the step directory:
@@ -241,7 +254,9 @@ the resource. Try in order, stop at the first that works:
 
 1. **Use what is already in the shell.** Most providers resolve an ambient credential with no
    configuration — an environment variable, a CLI login, a key or service-account file the user
-   already has. If their default credential can read the resource, you need nothing else.
+   already has. If their default credential can read the resource, you need nothing else. This
+   only works when the bundle's provider block passes no credential arguments of its own; if it
+   does, the values you supply locally override the ambient credential — go to rung 2.
 2. **Initialize the provider from the user's local credential.** Bundle provider blocks read from
    the credential connection, which is empty on your machine. Comment that block out and add a
    plain one beside it that uses the credential your rung needs — the provider's default
@@ -313,7 +328,7 @@ the key read has to stay inline in the command text; the list can come from a fi
 backend and the PLAN runs from the published bundle, so nothing local is needed again. Restore
 the original provider block, revert any `try()` wrapper, delete `backend_import.tf`,
 `import.auto.tfvars.json`, `.terraform/` and the lock file `tofu init` created, and diff the
-bundle against what you started with — nothing from the local import may survive.
+bundle against the copy from Step 4 — nothing from the local import may survive.
 
 Then verify the config matches reality by planning **in Massdriver's provisioner**:
 
@@ -329,7 +344,9 @@ Then verify the config matches reality by planning **in Massdriver's provisioner
 
 **A clean plan** does **NOT** create, destroy or replace any of the imported resources. The only
 in-place updates it may show are write-only attributes (see *Values the cloud can't return*) and
-Massdriver's default tags on resources that were untagged. Creating the bundle's own
+Massdriver's default tags on resources that were untagged, and provider-only arguments — settings
+that exist only in the provider and that the cloud never stores, so an import always reads them
+as unset and an apply changes nothing in the cloud. Creating the bundle's own
 `massdriver_resource` outputs is expected on the first deploy. Anything else means the HCL or the
 import params don't match the live resource. Tell the user which in-place updates the plan
 shows before you propose.
@@ -383,8 +400,9 @@ the import params and a `get_url` deep link, say that a form Deploy with the def
 act on the imported resource, and stop.
 
 **Then check what this import made obsolete.** `list_resources` with `origin: IMPORTED` and the
-bundle's output `resource_type` — imported resources belong to the organization, not an
-environment, so don't filter by environment. If one of them represents the infrastructure you
+bundle's output type with its version (`<type>@<version>`; the filter matches one version) —
+imported resources belong to the organization, not an environment, so don't filter by
+environment. If one of them represents the infrastructure you
 just brought into a bundle, it is now redundant — there is no reason to keep an imported resource
 once a provisioned one exists for the same thing. Credentials bound as defaults are inputs, not
 duplicates.
@@ -423,9 +441,11 @@ deliberate work. Name the superseded resource and what retiring it would involve
    - **Decide how each write-only value arrives** — a param or an `app.secrets` entry. See
      *Values the cloud can't return*.
    - **Choose the output resource type with the user.** Look for an existing type that fits
-     (`mass resource-type list`, then `get`). If one appears to match, ask whether to reuse it or
-     author a new one; if none does, ask before authoring one. A new resource type is live for the
-     whole organization as soon as it is published.
+     (`list_oci_repos` with `artifact_type: RESOURCE_TYPE`, then `get_resource_type`). If one
+     appears to match, ask whether to reuse it or author a new one; if none does, ask before
+     authoring one. A new resource type is live for the whole organization as soon as it is
+     published, and it needs its own OCI repo and a `version:` first (SKILL.md, *Publishing
+     Reference*). It can't share a name with the bundle.
 2. **Ensure the OCI repository exists and is granted** — `get_oci_repo` with the bundle name;
    if absent, `create_oci_repo` (`artifact_type: BUNDLE`), then check `list_oci_repo_grants`
    covers the target project and `create_oci_repo_grant` if not. Without the grant,
@@ -476,14 +496,10 @@ Creates a Massdriver resource with origin `IMPORTED`, owned by the organization 
 environment. Massdriver stores the payload and lets other components connect to it; it will
 never deploy, change, or destroy it. No IaC, no state, no instance.
 
-1. **Pick the resource type** and read its schema:
-   ```bash
-   mass resource-type list
-   mass resource-type get <resource-type>
-   ```
-   If none fits, ask before authoring one — it is live for the organization once published. A
-   new type needs its OCI repo first (`create_oci_repo` with `artifact_type: RESOURCE_TYPE`) and a
-   `version:` in its `massdriver.yaml`, or `mass resource-type publish` fails.
+1. **Pick the resource type** — `list_oci_repos` with `artifact_type: RESOURCE_TYPE` — and read
+   its schema with `get_resource_type`.
+   If none fits, ask before authoring one — it is live for the organization once published, and
+   needs its own OCI repo and a `version:` first (SKILL.md, *Publishing Reference*).
 
    Resource types can ship their own import instructions (the `instructions` field on
    `ResourceType`, one entry per workflow — CLI, cloud console, etc.). If the type has them,

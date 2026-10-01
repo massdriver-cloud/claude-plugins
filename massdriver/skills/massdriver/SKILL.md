@@ -65,6 +65,8 @@ Do NOT include these fields (they cause linter warnings):
 - Resource types: `mass resource-type publish|get|list`
 - Local dev: `mass server`, `mass schema validate|dereference`, `mass whoami`
 
+**Finding bundles and resource types:** to see what exists, regardless of published versions, `list_oci_repos` with `artifact_type: BUNDLE` or `RESOURCE_TYPE` (add `search` to narrow it). Each repo shows its `latestTag`; `get_oci_repo` lists every tag. Then `get_bundle` / `get_resource_type` for one that looks useful. `list_resources` finds *resources*, and its `resource_type` filter matches a specific version — pass `<type>@<version>`, or use `search`.
+
 **UI Only:** first-time credential/secret bootstrapping and visual canvas inspection. Use `get_url` to hand the user a deep link.
 
 **GraphQL:** nothing requires it. Use it only when one query spanning several entities beats a chain of tool calls. See [references/graphql.md](./references/graphql.md).
@@ -178,7 +180,7 @@ Before writing code, gather these inputs through conversation:
 **2. Resource Scoping**
 Based on the use case, suggest appropriate cloud resources:
 - Check existing bundles: `list_oci_repos` with `artifact_type: BUNDLE` (MCP)
-- Check existing resource types: `mass resource-type list` (CLI)
+- Check existing resource types: `list_oci_repos` with `artifact_type: RESOURCE_TYPE` (MCP)
 - Propose resources that fit the lifecycle tier (foundational/stateful/compute)
 
 **3. Preset Design**
@@ -204,7 +206,7 @@ Understand compliance requirements:
 
 **5. Dependencies & Resources**
 - What does this bundle need? What does it produce?
-- Run `mass resource-type list` (CLI) to see available resource type definitions
+- Find available resource types with `list_oci_repos` (`artifact_type: RESOURCE_TYPE`), then `get_resource_type`
 - **Resource types and Terraform providers are 1:1** — always base provider config on the credential resource type's schema
 
 ### Phase 2: Bundle Development
@@ -217,7 +219,7 @@ Understand compliance requirements:
    ```
 
 2. **Check/create resource types:**
-   - Run `mass resource-type list` to see existing resource types
+   - Find existing resource types: `list_oci_repos` with `artifact_type: RESOURCE_TYPE`
    - If the bundle needs a new resource type, create `resource-type/<name>/massdriver.yaml` (or `platforms/<name>/massdriver.yaml` for credential types — purely organizational)
    - **Publish immediately** (with user approval):
      ```bash
@@ -484,8 +486,8 @@ Always `mass resource-type get <platform-name>` before writing a provider block.
 ### 8. Replace-Forcing Params Are Immutable
 If changing an argument makes the provider destroy and recreate the resource (`ForceNew` in the provider's schema; "forces replacement" in a plan), every param that feeds it gets `$md.immutable: true`. Otherwise a routine edit in the UI becomes a delete.
 
-### 9. Schema Defaults Don't Reach HCL
-`mass bundle build` carries types, not defaults: a param becomes a variable with no default, and a nested object field becomes `optional(<type>)`, which is `null` when the params omit it. The UI fills schema defaults; params sent through the API may not. Wherever a value can be missing handle `null` in HCL (`coalesce(var.pool.name, local.default_name)`).
+### 9. Nested Defaults Don't Reach HCL
+`mass bundle build` carries a top-level param's schema default into its variable, but not a nested object field's: that becomes `optional(<type>)`, which is `null` when the params omit it. The UI fills schema defaults; params sent through the API may not. Wherever a nested value can be missing, handle `null` in HCL (`coalesce(var.pool.name, local.default_name)`).
 
 ### 10. Prefer Independent Resources Over Inline Blocks
 When a provider can express a child object either as a nested block on its parent or as its own resource, use the independent resource and never both for the same object — the two fight over it and the plan never settles. Independent resources can be added, removed and imported one at a time.
@@ -735,6 +737,8 @@ Before publishing:
 | Platform definition | `mass resource-type publish platforms/<name>/massdriver.yaml` | Same as resource types — live immediately |
 
 **After ANY change, you MUST publish.** The platform has no access to your local filesystem — changes don't exist until you publish.
+
+Each bundle and resource type publishes to its own OCI repository (`create_oci_repo`, `artifact_type: BUNDLE` or `RESOURCE_TYPE`); publishing fails until it exists. A resource type also needs `version:` in its `massdriver.yaml`. Bundles and resource types share one repository namespace — a bundle can't take a name a resource type already has, or the reverse — so check `list_oci_repos` before settling on either name.
 
 After publishing a new bundle release, instances on the `development` release channel auto-resolve to it. To force a redeploy of the new release without changing config, call `create_deployment` with `action: PROVISION`, no `params`, and a message like `"Pick up new release"`.
 
