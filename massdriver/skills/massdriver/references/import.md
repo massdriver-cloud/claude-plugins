@@ -55,14 +55,10 @@ When you find the resource, also inventory what it references and what reference
 created alongside it. Sort each into the bundle, a connection, or **left unmanaged** — a valid
 choice when the user doesn't want Massdriver to own or model it, as long as you name it.
 
-A dependency can point either way: something the resource uses, or something that uses it. Either
-way, the objects that join the two — an attachment, a subscription, a policy entry naming the
-other side — share the imported resource's lifecycle. They go in the bundle when the other side
-is a connection, and stay unmanaged when it is.
-
 Put every question to the user in one round, before creating anything in Massdriver: scope, where
-the instance goes, the output resource type, and whether the target environment already has a
-usable credential for the resource's cloud (if not, the user can create one while you work).
+the instance goes, the bundle name, the output resource type, and whether the target environment
+already has a usable credential for the resource's cloud (if not, the user can create one while
+you work).
 
 ### What to do
 
@@ -72,8 +68,7 @@ would belong to, and offer the two real options:
 - **Halt** — author or import the dependency properly first, then come back.
 - **Register the dependency as an imported resource** (Path C) and continue. It fills the
   bundle's connection slot and unblocks the main import; a second import can bring the dependency
-  under management later. If no resource type fits the dependency, say so — registering it then
-  means authoring a type first, which is live for the organization once published.
+  under management later.
 
 If they continue, the imported resource must exist and be wired **before Step 5** — that step
 builds `import.auto.tfvars.json` from the instance's params *and* its connections, so an unfilled
@@ -151,8 +146,7 @@ Pin **exact dev releases only**. `mass bundle publish --development` emits one p
 `<version>-dev.<UTC timestamp>`, e.g. `0.0.1-dev.20260929T000749Z`. That is a specific
 immutable release and is safe; `latest+dev` / `~1+dev` are channels and are not. Re-pin
 explicitly after each publish — an exact pin never floats, so no publish can trigger anything on
-its own. To pin a release you didn't just publish, take it from the repo's `tags` (`get_oci_repo`),
-not from what a channel resolves to — a channel can lag the newest tag.
+its own.
 
 The deployment actions in this procedure are `create_deployment` with `action: PLAN`, and one
 `propose_deployment` at the end (Step 8) that a human approves. Nothing here provisions.
@@ -210,8 +204,7 @@ resource into the state of the step whose IaC declares it.
 
 **Check the connection slots in the same response**, including the cloud credential. Every
 required slot must be filled before the PLAN, and a new project or environment usually has
-nothing bound. `get_instance` lists only the slots that are filled — compare against the
-bundle's declared dependencies, or use `list_environment_unfulfilled_dependencies`. Imported resources or provisioned resources created by an instance in
+nothing bound. Imported resources or provisioned resources created by an instance in
 another environment can be set as a default for the entire environment (common for credentials)
 with `set_environment_default`, or can be set per-instance with `set_remote_reference`. Using
 an imported resource or a provisioned resource from another environment requires a
@@ -254,15 +247,11 @@ the resource. Try in order, stop at the first that works:
 
 1. **Use what is already in the shell.** Most providers resolve an ambient credential with no
    configuration — an environment variable, a CLI login, a key or service-account file the user
-   already has. If their default credential can read the resource, you need nothing else. This
-   only works when the bundle's provider block passes no credential arguments of its own; if it
-   does, the values you supply locally override the ambient credential — go to rung 2.
+   already has. If their default credential can read the resource, you need nothing else.
 2. **Initialize the provider from the user's local credential.** Bundle provider blocks read from
    the credential connection, which is empty on your machine. Comment that block out and add a
-   plain one beside it that uses the credential your rung needs — the provider's default
-   resolution, a CLI login, or a key file
-   the user points you at. This is a **temporary local edit** to bundle source; see the warning
-   below.
+   plain one beside it that uses the user's credential. This is a **temporary local edit** to
+   bundle source; see the warning below.
 3. **Reproduce Massdriver's identity locally** — only if the user confirms they hold it and can
    use it from their machine. `get_environment` → defaults identifies the credential resource and
    `export_resource` returns its payload. That payload contains **unmasked secrets**, so confirm
@@ -276,29 +265,13 @@ no inventing an authentication path. Report the exact provider error and offer t
 
 **Every variable without a default needs a value**, whichever rung you're on. Run
 `mass bundle build`, then write a throwaway `import.auto.tfvars.json` in the step directory with
-`md_metadata`, the import params, and the credential object. On rungs 1 and 2 the provider never
-reads the credential, so placeholder strings are fine; never put a real secret there.
-
-`md_metadata` is a full object — a partial one fails type checking. Match the type in
-`_massdriver_variables.tf`; with the current CLI that is:
-
-```json
-"md_metadata": {
-  "name_prefix": "<instance name from get_instance>",
-  "default_tags": {},
-  "deployment": { "id": "import" },
-  "observability": { "alarm_webhook_url": "" },
-  "package": { "created_at": "", "deployment_enqueued_at": "", "previous_status": "", "updated_at": "" },
-  "target": { "contact_email": "" }
-}
-```
-
-**Secrets read through `module.bundle` are empty locally** — the module reads files only the
-provisioner writes, so `module.bundle.secrets["X"]` fails the import with an invalid-index error.
-Only after it fails, wrap that one index in `try(..., "")` for the import run.
+`md_metadata`, the import params, and the credential object, matching the types in
+`_massdriver_variables.tf` — `md_metadata` is a full object there, and a partial one fails type
+checking. If the provider doesn't read the credential, placeholder strings are
+fine; never put a real secret there.
 
 > **Nothing from this step reaches the platform.** The commented-out provider block, the local
-> one beside it, `backend_import.tf`, `import.auto.tfvars.json` and any `try()` wrapper are
+> one beside it, `backend_import.tf`, `import.auto.tfvars.json` and any other local edit are
 > throwaway: never committed, never published. A provider block rewritten for local credentials
 > that reaches the platform breaks every instance of the bundle.
 
@@ -321,14 +294,11 @@ tofu import -input=false <resource.address> <cloud-provider-id>   # repeat per r
 tofu state list                                                   # verify what landed in state
 ```
 
-For many resources, loop over a prepared list of address/ID pairs inside the same command. Only
-the key read has to stay inline in the command text; the list can come from a file.
-
 **Clean up as soon as `tofu state list` shows every resource.** The state now lives in the
 backend and the PLAN runs from the published bundle, so nothing local is needed again. Restore
-the original provider block, revert any `try()` wrapper, delete `backend_import.tf`,
-`import.auto.tfvars.json`, `.terraform/` and the lock file `tofu init` created, and diff the
-bundle against the copy from Step 4 — nothing from the local import may survive.
+the original provider block, delete `backend_import.tf`, `import.auto.tfvars.json`, `.terraform/`
+and the lock file `tofu init` created, and diff the bundle against the copy from Step 4 — nothing
+from the local import may survive.
 
 Then verify the config matches reality by planning **in Massdriver's provisioner**:
 
@@ -338,15 +308,11 @@ Then verify the config matches reality by planning **in Massdriver's provisioner
 - **A PLAN does not save its params.** Only a deployment saves an instance's config, so the
   instance's form still holds the bundle defaults. A Deploy from the form would apply those
   defaults, not the import params — and on an imported resource that can mean replace.
-- Read the result with `get_deployment_logs` (`follow: true`). A large plan overflows the
-  result; filter the log for the summary line and each resource's action and diff, and leave
-  Checkov blocks out.
+- Read the result with `get_deployment_logs` (`follow: true`).
 
 **A clean plan** does **NOT** create, destroy or replace any of the imported resources. The only
 in-place updates it may show are write-only attributes (see *Values the cloud can't return*) and
-Massdriver's default tags on resources that were untagged, and provider-only arguments — settings
-that exist only in the provider and that the cloud never stores, so an import always reads them
-as unset and an apply changes nothing in the cloud. Creating the bundle's own
+Massdriver's default tags on resources that were untagged. Creating the bundle's own
 `massdriver_resource` outputs is expected on the first deploy. Anything else means the HCL or the
 import params don't match the live resource. Tell the user which in-place updates the plan
 shows before you propose.
@@ -355,8 +321,8 @@ shows before you propose.
 resource it flags. Never quote Checkov blocks. If a secret sits on a flagged resource, tell the
 user it is exposed to anyone who can read the deployment logs and should be rotated after the
 deploy. Checkov failures don't block an import — they describe how the resource was built — but
-list them for the user before they approve; with `halt_on_failure` they would fail the approved
-deploy. Handle them later under [compliance.md](./compliance.md).
+list them for the user before they approve. Handle them later under
+[compliance.md](./compliance.md).
 
 **Never run `tofu plan` locally.** The provisioner has the correct credentials, the run is
 audited, and compliance tooling only executes there. `PLAN` deployments are exempt from the
@@ -390,8 +356,7 @@ human-authorized decision — hand it off as a proposal.
 **Propose the deployment with the import params.** `propose_deployment` with `action:
 PROVISION`, the exact params from the last clean PLAN, and a message. The proposal is what
 carries the import params to the platform; nothing else does. Then `plan_deployment` on the
-proposal's id and confirm it is the same clean plan — the same summary line and the same action
-on each resource. Tell the user to review that plan and
+proposal's id and confirm it is the same clean plan. Tell the user to review that plan and
 approve or reject the proposal in the UI — and **not to Deploy from the instance form**, which
 still holds the defaults until the proposal is approved. Never approve it yourself.
 
@@ -400,18 +365,23 @@ the import params and a `get_url` deep link, say that a form Deploy with the def
 act on the imported resource, and stop.
 
 **Then check what this import made obsolete.** `list_resources` with `origin: IMPORTED` and the
-bundle's output type with its version (`<type>@<version>`; the filter matches one version) —
-imported resources belong to the organization, not an environment, so don't filter by
-environment. If one of them represents the infrastructure you
+bundle's output type at its version — imported resources belong to the organization, not an
+environment, so don't filter by environment. If one of them represents the infrastructure you
 just brought into a bundle, it is now redundant — there is no reason to keep an imported resource
-once a provisioned one exists for the same thing. Credentials bound as defaults are inputs, not
-duplicates.
+once a provisioned one exists for the same thing.
 
 **Report it, do not act on it.** The replacement cannot happen yet: the bundle's resource does
-not exist until the user approves the proposed deployment. And
-re-pointing consumers is not part of this flow — `set_remote_reference` refuses an instance in
-`PROVISIONED` status, so anything already deployed against the imported resource needs separate,
-deliberate work. Name the superseded resource and what retiring it would involve.
+not exist until the user approves the proposed deployment. Name the superseded resource and
+every instance bound to it. Once the deploy is done, and only when the user asks, retire it:
+move each consumer onto the provisioned resource, then delete the imported one.
+
+- **Same environment as the new instance:** replace the consumer's remote reference with a
+  `link_components` link from the new component.
+- **Another environment or project:** a link can't cross environments. Keep the binding's
+  form — remote reference or environment default — but point it at the provisioned resource
+  (which needs a `resource:export` grant, Step 3).
+
+Plan each consumer with its saved params; it should show no changes.
 
 ### Recovering from a bad import
 
@@ -498,8 +468,7 @@ never deploy, change, or destroy it. No IaC, no state, no instance.
 
 1. **Pick the resource type** — `list_oci_repos` with `artifact_type: RESOURCE_TYPE` — and read
    its schema with `get_resource_type`.
-   If none fits, ask before authoring one — it is live for the organization once published, and
-   needs its own OCI repo and a `version:` first (SKILL.md, *Publishing Reference*).
+   If none fits, ask before authoring one — it is live for the organization once published.
 
    Resource types can ship their own import instructions (the `instructions` field on
    `ResourceType`, one entry per workflow — CLI, cloud console, etc.). If the type has them,

@@ -129,7 +129,8 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
 even needs.
 
 If `/massdriver:import` already passed a chosen path (A/B/C), use it and do NOT re-ask — go
-straight to the matching workflow. Otherwise use `AskUserQuestion`:
+straight to the matching workflow. Otherwise use `AskUserQuestion` (if you can't ask the user
+directly, stop and return the question with your recommendation):
 
 - **New bundle (Path A)** — Author a new reusable bundle, publish it, `add_component` (creating
   instances), then `tofu import` the resource into the target instance's state. Best when no
