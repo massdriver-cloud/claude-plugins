@@ -110,7 +110,7 @@ runs the matching workflow.
    `tofu import` the resource into that instance's managed state.
 2. **Existing bundle** — reuse a published bundle, create/pick an undeployed instance, then
    import into its managed state.
-3. **Register resource only** — create an `EXTERNAL` Massdriver resource so other components can
+3. **Register resource only** — create an imported Massdriver resource so other components can
    connect to it, with no IaC and no lifecycle management.
 
 Paths 1 and 2 put the resource under Massdriver's IaC management; path 3 only makes it

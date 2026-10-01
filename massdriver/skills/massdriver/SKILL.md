@@ -152,7 +152,7 @@ Workflow:
 or in another account.
 
 Three paths, chosen up front: author a **new bundle**, reuse an **existing bundle**, or
-**register the resource only** as an `EXTERNAL` resource with no IaC. The two bundle paths adopt
+**register the resource only** as an imported resource with no IaC. The two bundle paths adopt
 state with the imperative `tofu import` command against the instance's managed state — never
 `import {}` blocks, which would hardcode one cloud resource ID into source shared by every
 instance. Import runs locally; the plan runs in the provisioner via `create_deployment` with
@@ -484,7 +484,10 @@ Always `mass resource-type get <platform-name>` before writing a provider block.
 ### 8. Replace-Forcing Params Are Immutable
 If changing an argument makes the provider destroy and recreate the resource (`ForceNew` in the provider's schema; "forces replacement" in a plan), every param that feeds it gets `$md.immutable: true`. Otherwise a routine edit in the UI becomes a delete.
 
-### 9. Prefer Independent Resources Over Inline Blocks
+### 9. Schema Defaults Don't Reach HCL
+`mass bundle build` carries types, not defaults: a param becomes a variable with no default, and a nested object field becomes `optional(<type>)`, which is `null` when the params omit it. The UI fills schema defaults; params sent through the API may not. Wherever a value can be missing handle `null` in HCL (`coalesce(var.pool.name, local.default_name)`).
+
+### 10. Prefer Independent Resources Over Inline Blocks
 When a provider can express a child object either as a nested block on its parent or as its own resource, use the independent resource and never both for the same object — the two fight over it and the plan never settles. Independent resources can be added, removed and imported one at a time.
 
 ---

@@ -12,7 +12,7 @@ yet exposed as Massdriver params. Unrelated to this document.
 |------|--------------|------------------------|
 | **A — New bundle** | Author a new reusable bundle, publish it, add it as a component, then import the live resource into that instance's state | Yes (full IaC lifecycle) |
 | **B — Existing bundle** | Reuse a published bundle, pick/create an undeployed instance, import into its state | Yes (full IaC lifecycle) |
-| **C — Register resource only** | Create an `EXTERNAL` resource so other components can connect to it | No — reference only |
+| **C — Register resource only** | Create an imported resource so other components can connect to it | No — reference only |
 
 A and B hand Massdriver the ability to change and eventually destroy the resource. C only makes
 it referenceable on the canvas. If the user is unsure, ask: *manage* it (change/deploy/destroy)
@@ -49,6 +49,13 @@ Two questions, cheapest first:
    destroy it — it exists only to serve the imported resource — it belongs in the bundle. If it
    would outlive the imported resource, it is a connection.
 
+### Ask once, before anything exists
+
+When you find the resource, also inventory what it references and what references it or was
+created alongside it. Sort each into the bundle, a connection, or **left unmanaged** — a valid
+choice when the user doesn't want Massdriver to own or model it, as long as you name it. Put
+every scope question to the user in one round, before creating anything in Massdriver.
+
 ### What to do
 
 **Stop and ask the user.** Never decide this silently. Name the dependency, say which bundle it
@@ -57,7 +64,8 @@ would belong to, and offer the two real options:
 - **Halt** — author or import the dependency properly first, then come back.
 - **Register the dependency as an imported resource** (Path C) and continue. It fills the
   bundle's connection slot and unblocks the main import; a second import can bring the dependency
-  under management later.
+  under management later. If no resource type fits the dependency, say so — registering it then
+  means authoring a type first, which is live for the organization once published.
 
 If they continue, the imported resource must exist and be wired **before Step 5** — that step
 builds `import.auto.tfvars.json` from the instance's params *and* its connections, so an unfilled
@@ -116,16 +124,6 @@ the bundle has already decided: a param can go either way, an `app.secrets` entr
 Never invent, reuse or rotate a write-only value without asking. Whichever way it arrives, the
 plan shows the attribute as an in-place update — import cannot record a value the cloud never
 returns.
-
-## Tooling for this workflow
-
-- **MCP** — everything on the control plane: `get_viewer`, `get_project`, `get_environment`,
-  `add_component`, `get_instance`, `update_instance`, `create_deployment`,
-  `get_deployment_logs`, `set_environment_default`, `orphan_instance`.
-- **CLI** — filesystem-bound work only: `mass bundle build|lint|new|publish|pull`,
-  `mass resource-type get|list`, `mass resource create`.
-- **Bash `tofu`** — the local state write (`tofu init`, `tofu import`, `tofu state list`).
-  This is the one step no Massdriver tool performs for you.
 
 ---
 
@@ -210,7 +208,8 @@ with `set_environment_default`, or can be set per-instance with `set_remote_refe
 an imported resource or a provisioned resource from another environment requires a 
 `resource:export` grant to exist granting permission to the current environment. If a grant
 doesn't exist, create one (`create_resource_grant`) and scope it with both the `md-project` and
-`md-environment` condition keys to only allow this specific environment. If unsure whether to use
+`md-environment` condition keys to only allow this specific environment. `md-environment` takes
+the environment's own id (`dev`), not the full `<project>-<env>` slug. If unsure whether to use
 environment default or remote reference, ask the user which they prefer.
 
 ### Step 4: Select the http backend locally
@@ -307,6 +306,9 @@ tofu import -input=false <resource.address> <cloud-provider-id>   # repeat per r
 tofu state list                                                   # verify what landed in state
 ```
 
+For many resources, loop over a prepared list of address/ID pairs inside the same command. Only
+the key read has to stay inline in the command text; the list can come from a file.
+
 **Clean up as soon as `tofu state list` shows every resource.** The state now lives in the
 backend and the PLAN runs from the published bundle, so nothing local is needed again. Restore
 the original provider block, revert any `try()` wrapper, delete `backend_import.tf`,
@@ -321,7 +323,9 @@ Then verify the config matches reality by planning **in Massdriver's provisioner
 - **A PLAN does not save its params.** Only a deployment saves an instance's config, so the
   instance's form still holds the bundle defaults. A Deploy from the form would apply those
   defaults, not the import params — and on an imported resource that can mean replace.
-- Read the result with `get_deployment_logs` (`follow: true`).
+- Read the result with `get_deployment_logs` (`follow: true`). A large plan overflows the
+  result; filter the log for the summary line and each resource's action and diff, and leave
+  Checkov blocks out.
 
 **A clean plan** does **NOT** create, destroy or replace any of the imported resources. The only
 in-place updates it may show are write-only attributes (see *Values the cloud can't return*) and
@@ -356,6 +360,11 @@ params and re-plan, or per HCL iteration:
 config diverges from reality in a way an apply would act on. Reconcile the HCL; never deploy
 while the plan is dirty.
 
+**Some in-place diffs no config can match** — the provider normalizes or rejects the value the
+cloud stored. Name each one to the user with what an apply would actually do, and let them
+choose: accept it as part of the plan, suppress it with `lifecycle { ignore_changes }`, or stop.
+Never suppress a diff on your own; an ignore in shared bundle source hides future drift too.
+
 ### Step 8: Hand off
 
 The instance now has real state and a clean plan; the `PROVISION` deploy is a separate,
@@ -364,7 +373,8 @@ human-authorized decision — hand it off as a proposal.
 **Propose the deployment with the import params.** `propose_deployment` with `action:
 PROVISION`, the exact params from the last clean PLAN, and a message. The proposal is what
 carries the import params to the platform; nothing else does. Then `plan_deployment` on the
-proposal's id and confirm it is the same clean plan. Tell the user to review that plan and
+proposal's id and confirm it is the same clean plan — the same summary line and the same action
+on each resource. Tell the user to review that plan and
 approve or reject the proposal in the UI — and **not to Deploy from the instance form**, which
 still holds the defaults until the proposal is approved. Never approve it yourself.
 
@@ -372,10 +382,12 @@ If the hook blocks the proposal (production environments), don't work around it.
 the import params and a `get_url` deep link, say that a form Deploy with the defaults would
 act on the imported resource, and stop.
 
-**Then check what this import made obsolete.** `list_resources` with `origin: IMPORTED`, scoped
-to the environment. If one of them represents the infrastructure you just brought into a bundle,
-it is now redundant — there is no reason to keep an imported resource once a provisioned one
-exists for the same thing. Credentials bound as defaults are inputs, not duplicates.
+**Then check what this import made obsolete.** `list_resources` with `origin: IMPORTED` and the
+bundle's output `resource_type` — imported resources belong to the organization, not an
+environment, so don't filter by environment. If one of them represents the infrastructure you
+just brought into a bundle, it is now redundant — there is no reason to keep an imported resource
+once a provisioned one exists for the same thing. Credentials bound as defaults are inputs, not
+duplicates.
 
 **Report it, do not act on it.** The replacement cannot happen yet: the bundle's resource does
 not exist until the user approves the proposed deployment. And
@@ -460,15 +472,19 @@ plainly in the handoff that the bundle changed and what it would mean for existi
 
 ## Path C: Register Resource Only
 
-Creates a Massdriver resource with origin `EXTERNAL`. Massdriver stores the payload and lets
-other components connect to it; it will never deploy, change, or destroy it. No IaC, no state,
-no instance.
+Creates a Massdriver resource with origin `IMPORTED`, owned by the organization rather than an
+environment. Massdriver stores the payload and lets other components connect to it; it will
+never deploy, change, or destroy it. No IaC, no state, no instance.
 
 1. **Pick the resource type** and read its schema:
    ```bash
    mass resource-type list
    mass resource-type get <resource-type>
    ```
+   If none fits, ask before authoring one — it is live for the organization once published. A
+   new type needs its OCI repo first (`create_oci_repo` with `artifact_type: RESOURCE_TYPE`) and a
+   `version:` in its `massdriver.yaml`, or `mass resource-type publish` fails.
+
    Resource types can ship their own import instructions (the `instructions` field on
    `ResourceType`, one entry per workflow — CLI, cloud console, etc.). If the type has them,
    follow them over the generic steps here.
@@ -490,6 +506,6 @@ no instance.
 4. **Optionally make it an environment default** (MCP) so components connect to it without an
    explicit link: `set_environment_default`. Ask first — this changes what every instance in
    that environment connects to.
-5. **Tell the user plainly**: this resource is `EXTERNAL`. Massdriver will not manage its
-   lifecycle. Nothing will deploy or destroy it.
+5. **Tell the user plainly**: this resource is registered, not managed. Massdriver will not
+   manage its lifecycle. Nothing will deploy or destroy it.
 

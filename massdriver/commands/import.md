@@ -23,7 +23,7 @@ The command asks **how** you want to import *before* spawning any agent, then th
    that instance's state.
 2. **Existing bundle (Path B)** — Reuse a published bundle, create or pick an **undeployed**
    instance, then import into its state.
-3. **Register resource only (Path C)** — Create an `EXTERNAL` Massdriver resource so other
+3. **Register resource only (Path C)** — Create an imported Massdriver resource so other
    components can connect to it. Massdriver never deploys, changes, or destroys it. No IaC.
 
 Paths A and B put the resource under Massdriver's IaC management; Path C only makes it
@@ -69,7 +69,7 @@ blast radius.
      import into a new instance's state. Best when no suitable bundle exists.
    - **Existing bundle (Path B)** — Use a published bundle, create/pick an undeployed instance,
      then import into its state. Best when a suitable bundle already exists.
-   - **Register resource only (Path C)** — Create an `EXTERNAL` resource so other components can
+   - **Register resource only (Path C)** — Create an imported resource so other components can
      connect to it. No IaC; Massdriver does not manage its lifecycle.
 
    If the user is unsure, ask what they need: *manage* the resource (change/deploy/destroy) → A

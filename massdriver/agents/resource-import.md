@@ -136,7 +136,7 @@ straight to the matching workflow. Otherwise use `AskUserQuestion`:
   suitable bundle exists.
 - **Existing bundle (Path B)** — Use a published bundle, create/pick an undeployed instance,
   then import into its state. Best when a suitable bundle already exists.
-- **Register resource only (Path C)** — Create an `EXTERNAL` Massdriver resource so other
+- **Register resource only (Path C)** — Create an imported Massdriver resource so other
   components can connect to it. Massdriver never deploys, changes, or destroys it. No IaC.
 
 State the tradeoff briefly: A and B hand Massdriver the ability to change and eventually destroy
@@ -162,7 +162,9 @@ Set up **only what the chosen path needs**.
    proceed.
 4. **Find the live resource with the user's cloud credential** before creating anything in
    Massdriver. If it doesn't exist, or their credential can't read it, stop and ask — don't
-   create a project, environment or bundle for something you can't import.
+   create a project, environment or bundle for something you can't import. For Paths A/B, also
+   inventory what it references and what references it, and ask every scope question in one
+   round ("Ask once, before anything exists" in the reference).
 5. Establish the target project and environment (`get_project` / `get_environment`, or
    `create_project` / `create_environment`). Instance slugs are `<project>-<env>-<component>` —
    never double-prefix. Before creating either, `list_custom_attributes`: the organization may
