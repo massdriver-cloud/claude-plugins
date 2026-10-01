@@ -456,8 +456,8 @@ plainly in the handoff that the bundle changed and what it would mean for existi
 2. **Establish the target instance.** Ask the user whether to add the component to a new
    project/environment or import into an existing **undeployed** instance. Importing into an
    already-provisioned instance would collide with state it already owns — don't, unless the
-   user explicitly confirms that's what they want. A new project needs the bundle's OCI repo
-   granted to it (`list_oci_repo_grants`, `create_oci_repo_grant`), or `add_component` fails.
+   user explicitly confirms that's what they want. A project the bundle's OCI repo isn't granted
+   to needs a grant (`list_oci_repo_grants`, `create_oci_repo_grant`), or `add_component` fails.
 3. **Pin an exact release** with `update_instance` — the release you pulled, or the dev release
    each republish emits. Never a release channel — see *No release channels, no deploys*.
 4. Run **The State Import Procedure**, prompting before any bundle edits.
