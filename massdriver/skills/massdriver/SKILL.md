@@ -42,7 +42,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 
 ## Safety Rules
 
-1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
+1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag — and never dev-publish into a repository that still relies on republishing `0.0.0` without asking first; the first dev release locks `0.0.0` for good (see [Publishing Reference](#publishing-reference))
 2. **NEVER** provision or decommission production, and never change a production instance that is already deployed. Plans are fine anywhere. The one exception is an import: configuring an undeployed production instance, where the safety hook asks the user to approve each call.
 3. **ALWAYS** pass a `message` when creating deployments (`create_deployment`, `propose_deployment`)
 4. **ALWAYS** publish after ANY code or definition change — the platform has no access to your local filesystem — changes don't exist until you publish
@@ -83,6 +83,8 @@ Do NOT include these fields (they cause linter warnings):
 - **CLI auth**: run `mass whoami` and **compare it to `get_viewer`**. They are two independent credential paths and can silently disagree — the MCP server's profile is fixed at launch, while the CLI resolves a profile per command. If the organizations differ, STOP and tell the user: you would publish a bundle to one org and wire it up in another.
 - **CLI profile** (needed for publish/build steps): ask which profile to use. The default profile needs no action. For an alternate profile, prefix each command — `MASSDRIVER_PROFILE=<name> mass bundle build`. Do **not** run `export MASSDRIVER_PROFILE=<name>` as its own step: each Bash call is a fresh shell and the export is gone by the next call.
 - **Do not use the `--profile` flag.** It is a global flag; the safety hook reads the subcommand positionally, and while it now skips known global flags, the env-var prefix is the form the guards are built around. Prefer it.
+- `MASS_PROFILE` is **not** a recognized variable. The CLI ignores it silently and runs against the default profile's org. Before any CLI delete, decommission or repository removal, confirm the org with `mass whoami`.
+- Run locally, the `massdriver` Terraform provider authenticates from the CLI's default profile. Check which org that is before `tofu apply`.
 - Changing the profile does **not** re-point the MCP server. If the user needs the control plane on a different organization, they must exit Claude Code, export `MASSDRIVER_PROFILE` (or `MASSDRIVER_API_KEY` + `MASSDRIVER_ORGANIZATION_ID`), and start a new session. There is no way to change it mid-session.
 
 ### Project & Environment
@@ -254,6 +256,8 @@ Components live at the **project** level. Once added, every environment auto-get
 
 - `add_component` — one-time per (project, bundle) pair
 - `link_components` — wire one component's output field to another's input field (component IDs are `<project>-<comp>`)
+
+Links validate against the bundle's **latest stable release**, even when the instance is pinned to a dev release. A dependency field added only in a dev release can't be linked yet (`'X' does not have an input field named 'Y'`) — it needs a stable release, which only the user can publish.
 
 The component `id` is the final segment of every instance slug — keep it short (max 20 chars, lowercase alphanumeric).
 
@@ -709,9 +713,12 @@ Before publishing:
 | "variable not declared" | Run `mass bundle build` |
 | Param/dependency name collision | Rename one |
 | resources.tf field mismatch | Ensure `field = "X"` matches `resources.X` |
-| Publishing stable during development | Use `--development` flag always until production-ready |
+| Publishing stable during development | Use `--development` until production-ready, unless the repository republishes `0.0.0` |
 | Forgot to publish after code change | Platform can't read local files — always publish |
-| Instance not picking up new release after publish | Bundle development: pin the development channel, `update_instance` with version `latest+dev`. Import: re-pin the exact release instead |
+| Instance not picking up new release after publish | Bundle development: pin the development channel, `update_instance` with version `latest+dev`. An exact version is a pin (lock icon in the UI) and follows no channel. Import: re-pin the exact release instead |
+| Application didn't pick up a runtime bundle change | Applications bundle their runtime at publish time. Republish every application on that runtime |
+| `Repository is immutable. Tag '0.0.0' cannot be modified once other versions are published` | Another version (a `0.0.0-dev.*` counts) locked `0.0.0`. Bump the version, or delete and recreate the repository |
+| Link retry fails: `a link already routes this field for an overlapping version range` | A failed or timed-out link attempt left a link behind. `mass component unlink <from>.<field> <to>.<field>`, then retry |
 | Assumed a release-channel flag or enum | Channels ride the version constraint: `latest+dev` / `~1+dev` for development, `latest` / `~1` for stable |
 | Tried `mass pkg create` / `mass component add` for deploys | `add_component` (MCP) once at the project level |
 | Tried `mass pkg cfg` to set params | Params travel with each `create_deployment` call |
@@ -729,7 +736,7 @@ Before publishing:
 
 | What Changed | Command | Notes |
 |--------------|---------|-------|
-| Bundle code | `mass bundle publish --development` | Always use `--development` (or `-d`) |
+| Bundle code | `mass bundle publish --development` | `--development` (or `-d`), except into a repository that republishes `0.0.0` |
 | Resource type | `mass resource-type publish resource-type/<name>/massdriver.yaml` | Goes live immediately, no `--development` flag, get user approval |
 | Platform definition | `mass resource-type publish platforms/<name>/massdriver.yaml` | Same as resource types — live immediately |
 
@@ -737,7 +744,21 @@ Before publishing:
 
 Each bundle and resource type publishes to its own OCI repository (`create_oci_repo`, `artifact_type: BUNDLE` or `RESOURCE_TYPE`); publishing fails until it exists. A resource type also needs `version:` in its `massdriver.yaml`. Bundles and resource types share one repository namespace — a bundle can't take a name a resource type already has, or the reverse — so check `list_oci_repos` before settling on either name.
 
+**`0.0.0` is mutable only while it's the repository's only version.** Publishing any other version, including the `0.0.0-dev.*` releases `--development` produces, locks `0.0.0` permanently, and versions can't be deleted. If a repository's workflow republishes `0.0.0` in place (common for catalogs and CI), don't dev-publish into it: test another way or ask the user first.
+
+Applications bundle their runtime at publish time. After changing a runtime bundle, republish every application that runs on it; at non-`0.0.0` versions that's a version bump per runtime change.
+
 After publishing a new bundle release, instances on the `development` release channel auto-resolve to it. To force a redeploy of the new release without changing config, call `create_deployment` with `action: PROVISION`, no `params`, and a message like `"Pick up new release"`.
+
+### Deleting a Bundle Repository
+
+Deletion is refused while the repository is in use (`1 manifest, N deployed instances, M deployments`). Before starting, confirm the org (`mass whoami`) and check every environment the component lives in (`mass environment list <project>`, then each instance's status) — the component may be deployed in environments you didn't create. Then, in order:
+
+1. Decommission every deployed instance of it.
+2. Remove the component from every project blueprint (`mass component remove`; this removes it from every environment).
+3. `mass repository delete <name>`.
+
+The next publish starts fresh at `0.0.0`. CI that runs `mass repository create … || true` recreates the repository on its own.
 
 ---
 
@@ -765,7 +786,17 @@ mass resource-type publish platforms/my-cloud/massdriver.yaml
 # Auth / introspection
 mass whoami
 mass version
+
+# Control plane, when the MCP server is unavailable
+mass instance version <slug>@<version>   # Exact version = pinned; a constraint (latest+dev, ~1) follows a channel
+mass instance deploy <slug> -m "<msg>"   # Can return before slow deploys (CloudFront) finish
+mass instance get <slug> -o json | jq -r .status
+mass component unlink <from>.<field> <to>.<field>
+mass component remove <project>-<component>
+mass repository delete <name>
 ```
+
+After a CLI deploy or destroy, poll `.status` until it reaches the state you expect (`PROVISIONED` or `DECOMMISSIONED`) or `FAILED`. Right after a decommission starts, status still reads `PROVISIONED`, so wait for `DECOMMISSIONED` rather than for "not running".
 
 ---
 

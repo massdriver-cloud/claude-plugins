@@ -129,7 +129,7 @@ Deploy at the **current** version first to establish a baseline.
 
 ## Phase 5: Upgrade Test
 
-1. **Set version to target** with `update_instance` (add `+dev` to the constraint if the target is a development release).
+1. **Set version to target** with `update_instance` (add `+dev` to the constraint if the target is a development release). Links validate against the latest **stable** release, so a connection the target adds only in a dev release can't be wired until it ships stable — report that rather than working around it.
 
 2. **Deploy the upgrade**: `create_deployment` (PROVISION, message `"Upgrade test: v<current> -> v<target>"`) + `get_deployment_logs follow:true` (long upgrades: raise `timeout_seconds` and re-call if still running).
 
@@ -143,7 +143,7 @@ Deploy at the **current** version first to establish a baseline.
 
 ## Phase 6: Cleanup & Reporting
 
-1. **Tear down the environment** with `decommission_environment` — it tears down every instance in reverse dependency order. The wave is asynchronous; watch progress with `list_instances` until all instances are `DECOMMISSIONED`.
+1. **Tear down the environment** with `decommission_environment` — it tears down every instance in reverse dependency order. The wave is asynchronous; watch progress with `list_instances` until all instances are `DECOMMISSIONED`. Instances keep reading `PROVISIONED` for a while after teardown starts — wait for the terminal state, not for a change.
 
 2. **Journal the results** with `update_environment`: set the description to `"Upgrade test: <bundle> v<current> -> v<target>. Result: <PASS/FAIL>. Date: <date>"`.
 

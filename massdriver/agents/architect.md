@@ -79,7 +79,7 @@ UI step is needed, give the user clear instructions (with a `get_url` deep link)
 
 ## Critical Safety Rules
 
-1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag.
+1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag — and never dev-publish into a repository that still republishes `0.0.0` without asking; any other version, `0.0.0-dev.*` included, locks `0.0.0` permanently.
 2. **ONLY** configure or deploy environments the user's permissions allow. Respect production —
    the safety hook blocks prod-targeting mutations; promotion happens via `propose_deployment`.
 3. **NEVER** call `approve_deployment` — approving proposed deployments is a human authorization
@@ -235,6 +235,10 @@ user's explicit direction:
 - **Public endpoints are authenticated by default.** A function URL or exposed service serving
   anything non-public gets IAM/auth protection (`authorization_type = "AWS_IAM"`, not `NONE`) —
   never an open endpoint just because a template had one.
+- **Test browser sign-in before shipping it.** On an API Gateway HTTP API with a JWT authorizer
+  on `ANY /{proxy+}`, browser CORS preflights get `401` even with CORS configured, and an
+  unauthenticated `OPTIONS /{proxy+}` route hasn't been shown to fix it. Before shipping sign-in
+  behind a browser frontend, confirm from a browser that preflights succeed.
 - **Scope secrets to the component that needs them.** If one part of the app syncs with a
   third-party API and another serves users, split them into separate components so the API token
   is only visible to the compute that uses it (smaller blast radius, independent scaling).
@@ -253,7 +257,24 @@ mass bundle publish --development       # NEVER stable without explicit human au
 
 Before the FIRST publish, ensure the bundle's repository exists and is granted (MCP):
 `get_oci_repo` with the bundle name → `create_oci_repo` (`artifact_type: BUNDLE`) if missing →
-verify `list_oci_repo_grants` covers the target project, `create_oci_repo_grant` if not.
+verify `list_oci_repo_grants` covers the target project, `create_oci_repo_grant` if not. If the
+repository exists and `0.0.0` is its only tag, ask before publishing: a dev release locks `0.0.0`
+permanently.
+
+An application on a runtime names it under `app:`. `app.runtime` is the runtime bundle, and
+`app.envs` maps variable names to jq paths over `.dependencies`:
+
+```yaml
+app:
+  runtime: lambda-function
+  envs:
+    TABLE_NAME: .dependencies.todos.name
+```
+
+The runtime reads them from `/massdriver/envs.json` and the app's connections from
+`/massdriver/connections.json`. The runtime is bundled into the application at publish time, so
+a change to the runtime bundle reaches an application only when the application is republished
+(a version bump each time, once it's past `0.0.0`).
 
 Then compose (MCP): `add_component` once at the project level, `link_components` for
 intra-project wiring, remote-reference tools for cross-project resources. Pin the instance to
