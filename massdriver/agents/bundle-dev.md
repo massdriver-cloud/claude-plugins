@@ -57,7 +57,7 @@ Components are added exactly once, at the project level (`add_component`) — ne
 
 ## Critical Safety Rules
 
-1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag
+1. **NEVER** run `mass bundle publish` without `--development` (`-d`) flag — and never dev-publish into a repository that still republishes `0.0.0` without asking; any other version, `0.0.0-dev.*` included, locks `0.0.0` permanently
 2. **ONLY** configure or deploy your own test environments or explicitly authorized environments
 3. **ALWAYS** pass a `message` when calling `create_deployment`
 4. **ALWAYS** watch deployment logs after every deploy — call `get_deployment_logs` with `follow: true` right after `create_deployment`.
@@ -248,6 +248,8 @@ provider "aws" {
 
 6. **Before the FIRST publish — ensure the bundle's repository exists and is granted** (MCP): `get_oci_repo` with the bundle name. If it doesn't exist, create it with `create_oci_repo` (`artifact_type: BUNDLE`). Then verify the repository has a grant covering the target project (`list_oci_repo_grants`) — without one `add_component` will fail in Phase 3. Create it with `create_oci_repo_grant`. Only new bundles need this step.
 
+   If the repository already exists and `0.0.0` is its only tag, its owner is likely republishing `0.0.0` in place. A dev publish locks that tag for good and versions can't be deleted — ask the user before publishing.
+
 ### After ANY Change — PUBLISH
 
 The platform has no access to your local filesystem — changes don't exist until you publish:
@@ -266,6 +268,8 @@ This is **once per (project, bundle) pair**. After this, every environment in th
 `<component-id>` is the final segment of every instance slug (e.g. `db`, `web`, `cache`). Max 20 chars, lowercase alphanumeric. Choose something concise — combined with project + env, instance slugs need to stay readable.
 
 If this component depends on another component's output, link them (MCP): `link_components` with the source component's output field and the destination component's input field (component IDs are `<project>-<comp>`).
+
+Links validate against the bundle's latest **stable** release, not the dev release the instance runs. A dependency that exists only in a dev release fails with `'X' does not have an input field named 'Y'` — tell the user it needs a stable release. If a link attempt fails or times out, it can still leave a link behind, and the retry fails with `a link already routes this field for an overlapping version range`: run `mass component unlink <from>.<field> <to>.<field>`, then link again.
 
 ## Phase 4: Configure Release Channel and Deploy
 

@@ -143,7 +143,7 @@ of improvising infrastructure.
 - **Design once, deploy everywhere.** A component is added to a project's blueprint one time; every environment automatically gets an instance of it. Wire one component's output to another's input and the connection follows into each environment.
 - **Deploy and watch in one step.** Every deploy streams its logs back, so Claude sees failures and Checkov findings as they happen and can act on them without you relaying output.
 - **Dry runs are always safe.** Plans never touch infrastructure and are allowed anywhere, including production — so Claude can check its work before proposing a change.
-- **Development releases stay out of everyone's way.** Publishing with `--development` and pinning a test instance to `latest+dev` means your iteration never reaches instances on stable.
+- **Development releases stay out of everyone's way.** Publishing with `--development` and pinning a test instance to `latest+dev` means your iteration never reaches instances on stable. One exception: a development release locks a repository's `0.0.0` against further republishing, so Claude asks before dev-publishing into a repository that still relies on it.
 - **Day 2 is covered.** Fork production into a test environment, upgrade it, diff the result, and roll back if it regresses. Changes that need sign-off can be *proposed* instead of applied, for a human to approve.
 - **Environment-scale operations.** Deploy or decommission a whole environment in dependency order, or mirror one instance's config onto another with overrides.
 

@@ -447,9 +447,11 @@ compatible with every existing instance:
   would now fail.
 - Don't change artifact outputs; downstream instances are connected to those fields.
 
-Your `--development` publishes don't reach instances pinned to stable, so iterating is safe. The
-compatibility bill comes due when someone publishes stable — a human decision, not yours. Say
-plainly in the handoff that the bundle changed and what it would mean for existing instances.
+Your `--development` publishes don't reach instances pinned to stable, so iterating is safe —
+unless the repository still republishes `0.0.0` in place. A dev release locks `0.0.0`
+permanently, so ask before the first publish there. The compatibility bill comes due when
+someone publishes stable — a human decision, not yours. Say plainly in the handoff that the
+bundle changed and what it would mean for existing instances.
 
 1. **Identify the bundle** and pull its source if you don't have it: `mass bundle pull <name>`.
    Confirm the backend (Procedure Step 1).

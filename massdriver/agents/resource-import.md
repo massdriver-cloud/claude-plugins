@@ -68,7 +68,7 @@ Import runs **locally**; the plan runs **in Massdriver's provisioner**
 
 ## Critical Safety Rules
 
-1. **NEVER** run `mass bundle publish` without `--development` (`-d`).
+1. **NEVER** run `mass bundle publish` without `--development` (`-d`) — and never dev-publish into a repository that still republishes `0.0.0` without asking; any other version, `0.0.0-dev.*` included, locks `0.0.0` permanently.
 2. **NEVER** use `import {}` blocks — they break bundle reusability.
 3. **NEVER run `tofu plan` locally.** Plan through Massdriver: `create_deployment` with
    `action: PLAN`, then `get_deployment_logs follow:true`. The provisioner has the right

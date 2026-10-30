@@ -22,8 +22,9 @@ decides which resource versions a dependency accepts and which version a resourc
 
 A major-version constraint is safe as long as resource type releases follow semver: breaking
 changes bump the major. Get the current version from `mass resource-type get <name>` and
-constrain to its major. Version `0.0.0` is a special case: it is mutable, so a type at `0.0.0`
-changes in place rather than through new versions. Constrain it with `@~0`.
+constrain to its major. Version `0.0.0` is a special case: while it's the repository's only version
+it can be republished in place, so a type at `0.0.0` changes without new versions. Constrain it
+with `@~0`. Publishing any other version locks `0.0.0` for good.
 
 ## Complete Bundle Examples
 
