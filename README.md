@@ -1,6 +1,6 @@
 # Massdriver Plugin for Claude Code
 
-Build infrastructure bundles for [Massdriver](https://massdriver.cloud) — the internal developer platform that turns infrastructure-as-code into reusable, self-service components with built-in guardrails.
+Build infrastructure bundles for [Massdriver](https://www.massdriver.cloud) — a platform orchestrator for governed infrastructure change that turns Terraform, OpenTofu, and Helm into reusable capabilities developers and AI agents can request through the same controlled path.
 
 Describe what you want, and Claude designs the bundle, deploys it to a throwaway environment, and iterates until it's working and compliant. It drives Massdriver through the [MCP server](https://github.com/massdriver-cloud/mcp-server), which the plugin registers for you — that's why Docker is a prerequisite alongside the `mass` CLI.
 
